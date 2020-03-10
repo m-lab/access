@@ -1,5 +1,5 @@
-// Package token provides support for parsing JSON Web Keys (JWK) and
-// signing or verifying JSON Web Tokens (JWT) with specific claims.
+// Package token provides support for parsing JSON Web Keys (JWK),
+// creating signed JSON Web Tokens (JWT), and verifying JWT signatures.
 package token
 
 import (

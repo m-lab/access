@@ -1,3 +1,5 @@
+// Package controller provides various access controllers for use in
+// socket-based and HTTP-based services.
 package controller
 
 import (

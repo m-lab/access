@@ -68,7 +68,8 @@ func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 }
 
 // Verify checks the token signature and that the claims match the expected
-// config.
+// config. Note: if validation of the expected claims fails, then Verify will
+// return the original token claims with the corresponding non-nil validation error.
 func (k *Verifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, error) {
 	cl, err := k.Claims(token)
 	if err != nil {

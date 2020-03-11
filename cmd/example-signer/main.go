@@ -39,7 +39,11 @@ func main() {
 		Issuer:   "locate.measurementlab.net",
 		Subject:  subject,
 		Audience: jwt.Audience{machine},
-		Expiry:   jwt.NewNumericDate(time.Now().Add(2 * time.Minute)),
+		// The JWT issuer controls the token lifetime. It's up to the verifier
+		// to decide whether to honor it. This example sets an expiration 2min
+		// into the future. In a live system, this would provide plenty of time
+		// to run a measurement.
+		Expiry: jwt.NewNumericDate(time.Now().Add(2 * time.Minute)),
 	}
 	pretty.Print(cl)
 

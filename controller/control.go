@@ -5,6 +5,8 @@ package controller
 import (
 	"context"
 	"net/http"
+
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 // Controller is the interface that all access control types should implement.
@@ -12,24 +14,34 @@ type Controller interface {
 	Limit(next http.Handler) http.Handler
 }
 
-type monitoringContextIDType struct{}
+type claimContextIDType struct{}
 
-var monitoringContextIDKey = monitoringContextIDType{}
+var claimContextIDKey = claimContextIDType{}
 
-// SetMonitoring returns a derived context with the given value.
-func SetMonitoring(ctx context.Context, value bool) context.Context {
+// SetClaim returns a derived context with the given value.
+func SetClaim(ctx context.Context, claim *jwt.Claims) context.Context {
 	// Add a context value to pass advisory information to the next handler.
-	return context.WithValue(ctx, monitoringContextIDKey, value)
+	return context.WithValue(ctx, claimContextIDKey, claim)
 }
 
-// GetMonitoring attempts to extract the monitoring value from the given context.
-func GetMonitoring(ctx context.Context) bool {
+// GetClaim attempts to extract the monitoring value from the given context.
+func GetClaim(ctx context.Context) *jwt.Claims {
 	if ctx == nil {
-		return false
+		return nil
 	}
-	value := ctx.Value(monitoringContextIDKey)
+	value := ctx.Value(claimContextIDKey)
 	if value == nil {
+		return nil
+	}
+	return value.(*jwt.Claims)
+}
+
+const monitorSubject = "monitoring"
+
+// IsMonitoring reports whether (possibly nil) claim is from a monitoring issuer.
+func IsMonitoring(cl *jwt.Claims) bool {
+	if cl == nil {
 		return false
 	}
-	return value.(bool)
+	return cl.Subject == monitorSubject
 }

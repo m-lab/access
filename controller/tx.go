@@ -115,8 +115,8 @@ func (tx *TxController) isLimited(proto string, monitoring bool) bool {
 // the next handler. If the rate is unspecified (zero), all requests are accepted.
 func (tx *TxController) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// TODO: discover whether monitoring is true from access token claim.
-		monitoring := false
+		// Discover whether the access token was issued for monitoring.
+		monitoring := IsMonitoring(GetClaim(r.Context()))
 		if tx.isLimited("http", monitoring) {
 			// 503 - https://tools.ietf.org/html/rfc7231#section-6.6.4
 			w.WriteHeader(http.StatusServiceUnavailable)

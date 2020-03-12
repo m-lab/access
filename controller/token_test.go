@@ -64,6 +64,7 @@ func TestTokenController_Limit(t *testing.T) {
 			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
 					Issuer:   tokenIssuer,
+					Subject:  monitorSubject,
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
@@ -71,7 +72,7 @@ func TestTokenController_Limit(t *testing.T) {
 			token:      "this-is-a-fake-token",
 			code:       http.StatusOK,
 			visited:    true,
-			monitoring: true, // because the Issuer == monitorIssuer.
+			monitoring: true, // because the Subject == monitorSubject.
 		},
 		{
 			name:    "error-failure-to-verify",

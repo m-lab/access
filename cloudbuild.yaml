@@ -1,4 +1,9 @@
 options:
+  env:
+  - COMMIT_SHA=$COMMIT_SHA
+  - GIT_ORIGIN_URL=https://github.com/m-lab/access.git
+  - WORKSPACE_LINK=/go/src/github.com/m-lab/access
+
   secretEnv:
   - COVERALLS_TOKEN
 

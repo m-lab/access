@@ -4,6 +4,7 @@ options:
   - GIT_ORIGIN_URL=https://github.com/m-lab/access.git
   - WORKSPACE_LINK=/go/src/github.com/m-lab/access
   - PULL_REQUEST_NUMBER=$_PR_NUMBER
+  - BRANCH_NAME=$BRANCH_NAME
 
   secretEnv:
   - COVERALLS_TOKEN

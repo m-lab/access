@@ -1,3 +1,7 @@
+options:
+  secretEnv:
+  - COVERALLS_TOKEN
+
 steps:
 - name: gcr.io/$PROJECT_ID/golang-cbif
   args:
@@ -7,3 +11,8 @@ steps:
   - go test ./... -race
   - go test ./... -cover=1 -coverprofile=_c.cov
   - goveralls -jobid=$SHORT_SHA -coverprofile=_c.cov
+
+secrets:
+- kmsKeyName: projects/$PROJECT_ID/locations/global/keyRings/cloud-build-coveralls-tokens/cryptoKeys/$REPO_NAME
+  secretEnv:
+    COVERALLS_TOKEN:

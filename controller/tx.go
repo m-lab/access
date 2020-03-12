@@ -20,6 +20,7 @@ import (
 var (
 	procPath         = "/proc"
 	device           string
+	maxRate          uint64
 	txAccessRequests = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "ndt_access_txcontroller_requests_total",
@@ -33,6 +34,7 @@ var (
 
 func init() {
 	flag.StringVar(&device, "txcontroller.device", "", "Calculate bytes transmitted from this device.")
+	flag.Uint64Var(&maxRate, "txcontroller.max-rate", 0, "The max rate beyond which, the TxController will reject new clients")
 }
 
 // TxController calculates the bytes transmitted every period from the named device.
@@ -46,7 +48,7 @@ type TxController struct {
 
 // NewTxController creates a new instance initialized to run every second.
 // Caller should run Watch in a goroutine to regularly update the current rate.
-func NewTxController(rate uint64) (*TxController, error) {
+func NewTxController() (*TxController, error) {
 	if device == "" {
 		return nil, ErrNoDevice
 	}
@@ -61,7 +63,7 @@ func NewTxController(rate uint64) (*TxController, error) {
 	}
 	tx := &TxController{
 		device: device,
-		limit:  rate,
+		limit:  maxRate,
 		pfs:    pfs,
 		period: 100 * time.Millisecond,
 	}
@@ -80,7 +82,7 @@ func (tx *TxController) Accept(l net.Listener) (net.Conn, error) {
 		// No need to check isLimited, the accept failed.
 		return nil, err
 	}
-	if tx.isLimited("raw") {
+	if tx.isLimited("raw", false) {
 		defer conn.Close()
 		return nil, fmt.Errorf("TxController rejected connection %s", conn.RemoteAddr())
 	}
@@ -96,11 +98,12 @@ func (tx *TxController) set(value uint64) {
 	atomic.StoreUint64(&tx.current, value)
 }
 
-// isLimited checks the current tx rate and returns whether the connection should
-// be accepted or rejected.
-func (tx *TxController) isLimited(proto string) bool {
+// isLimited checks the current tx rate and returns whether the connection
+// should be accepted or rejected. If monitoring is true, then even if the
+// current limit is exceeded, the request will be accepted.
+func (tx *TxController) isLimited(proto string, monitoring bool) bool {
 	cur := tx.Current()
-	if tx.limit > 0 && cur > tx.limit {
+	if tx.limit > 0 && cur > tx.limit && !monitoring {
 		txAccessRequests.WithLabelValues("rejected", proto).Inc()
 		return true
 	}
@@ -112,7 +115,9 @@ func (tx *TxController) isLimited(proto string) bool {
 // the next handler. If the rate is unspecified (zero), all requests are accepted.
 func (tx *TxController) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if tx.isLimited("http") {
+		// TODO: discover whether monitoring is true from access token claim.
+		monitoring := false
+		if tx.isLimited("http", monitoring) {
 			// 503 - https://tools.ietf.org/html/rfc7231#section-6.6.4
 			w.WriteHeader(http.StatusServiceUnavailable)
 			// Return without additional response.

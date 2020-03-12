@@ -41,7 +41,8 @@ func TestTxController_Limit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			procPath = tt.procPath
 			device = "eth0"
-			tx, err := NewTxController(tt.limit)
+			maxRate = tt.limit
+			tx, err := NewTxController()
 			if !tt.wantErr && (err != nil) {
 				t.Errorf("NewTxController() got %v, want %t", err, tt.wantErr)
 				return
@@ -101,7 +102,8 @@ func TestNewTxController(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			device = tt.device
 			procPath = tt.procPath
-			got, err := NewTxController(tt.limit)
+			maxRate = tt.limit
+			got, err := NewTxController()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewTxController() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -145,7 +147,8 @@ func TestTxController_Watch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			device = "eth0"
 			procPath = tt.procPath
-			tx, err := NewTxController(tt.limit)
+			maxRate = tt.limit
+			tx, err := NewTxController()
 			if err != nil {
 				t.Errorf("NewTxController() error = %v, want nil", err)
 				return

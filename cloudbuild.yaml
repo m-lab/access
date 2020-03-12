@@ -17,7 +17,7 @@ steps:
   - go vet ./...
   - go test ./... -race
   - go test ./... -cover=1 -coverprofile=_c.cov
-  - goveralls -jobid=$SHORT_SHA -coverprofile=_c.cov
+  - goveralls -jobid=$SHORT_SHA -service=cloud-build -debug=true -coverprofile=_c.cov
 
 secrets:
 # TODO: change so keys will work for builds outside mlab-sandbox.

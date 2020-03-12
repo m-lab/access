@@ -1,0 +1,9 @@
+steps:
+- name: gcr.io/$PROJECT_ID/golang-cbif
+  args:
+  - go get github.com/mattn/goveralls
+  - go get -v -t ./...
+  - go vet ./...
+  - go test ./... -race
+  - go test ./... -cover=1 -coverprofile=_c.cov
+  - goveralls -jobid=$SHORT_SHA -coverprofile=_c.cov

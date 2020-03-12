@@ -15,4 +15,4 @@ steps:
 secrets:
 - kmsKeyName: projects/$PROJECT_ID/locations/global/keyRings/cloud-build-coveralls-tokens/cryptoKeys/$REPO_NAME
   secretEnv:
-    COVERALLS_TOKEN:
+    COVERALLS_TOKEN: CiQA7U54+vf6w10gx27ybhW2B+LsghNQLEM5h5zSuc8L2SBT6w0SSgC1lkIU+HIEhoMwun+X/gqjahpLq0LD38FxsGqAACJ/mv34/J2hwtCJ7W9NqieZbsb1qBOaUmI7TG9uCaHtY2j5nj6vOAJ7ERay

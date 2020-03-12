@@ -30,7 +30,8 @@ func TestGetClaim(t *testing.T) {
 
 func TestIsMonitoring(t *testing.T) {
 	cl := &jwt.Claims{
-		Issuer: monitorIssuer,
+		Issuer:  tokenIssuer,
+		Subject: monitorSubject,
 	}
 	if !IsMonitoring(cl) {
 		t.Errorf("IsMonitoring() did not recognize monitoring issuer; got false, want true")

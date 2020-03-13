@@ -3,25 +3,40 @@ package controller
 import (
 	"context"
 	"testing"
+
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-func TestGetMonitoring(t *testing.T) {
-	// Set monitoring value true.
+func TestGetClaim(t *testing.T) {
+	// Set claim.
 	ctx := context.Background()
-	ctx = SetMonitoring(ctx, true)
-	if m := GetMonitoring(ctx); !m {
-		t.Errorf("Set/GetMonitoring() wrong; got %t, want %t", m, true)
+	cl := &jwt.Claims{}
+	ctx = SetClaim(ctx, cl)
+	if got := GetClaim(ctx); got == nil || got != cl {
+		t.Errorf("Set/GetClaim() wrong; got nil, want %v", cl)
 	}
 
-	// Set monitoring value false.
+	// Get claim from ctx without a value.
 	ctx = context.Background()
-	ctx = SetMonitoring(ctx, false)
-	if m := GetMonitoring(ctx); m {
-		t.Errorf("Set/GetMonitoring() wrong; got %t, want %t", m, false)
+	if cl := GetClaim(ctx); cl != nil {
+		t.Errorf("Set/GetClaim() wrong; got %v, want nil", cl)
 	}
 
 	// Verify that a nil context WAI.
-	if m := GetMonitoring(nil); m {
-		t.Errorf("Set/GetMonitoring() wrong; got %t, want %t", m, false)
+	if cl := GetClaim(nil); cl != nil {
+		t.Errorf("Set/GetClaim() wrong; got %v, want nil", cl)
+	}
+}
+
+func TestIsMonitoring(t *testing.T) {
+	cl := &jwt.Claims{
+		Issuer:  tokenIssuer,
+		Subject: monitorSubject,
+	}
+	if !IsMonitoring(cl) {
+		t.Errorf("IsMonitoring() did not recognize monitoring issuer; got false, want true")
+	}
+	if IsMonitoring(nil) {
+		t.Errorf("IsMonitoring() did not recognize monitoring issuer; got true, want false")
 	}
 }

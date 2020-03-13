@@ -11,8 +11,6 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-const monitorIssuer = "monitoring"
-
 var (
 	tokenAccessRequests = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -22,10 +20,12 @@ var (
 		[]string{"request", "reason"},
 	)
 	requireTokens bool
+	tokenIssuer   string
 )
 
 func init() {
 	flag.BoolVar(&requireTokens, "tokencontroller.required", false, "Whether access tokens are required by HTTP-based clients.")
+	flag.StringVar(&tokenIssuer, "tokencontroller.issuer", "locate.measurementlab.net", "The JWT issuer used to verify access tokens.")
 }
 
 // TokenController manages access control for clients providing access_token parameters.
@@ -68,6 +68,8 @@ func (t *TokenController) Limit(next http.Handler) http.Handler {
 // indicating whether the token issuer is "monitoring" or not.
 func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	ctx := r.Context()
+	// NOTE: r.Form is not populated until calling ParseForm.
+	r.ParseForm()
 	token := r.Form.Get("access_token")
 	if token == "" && !requireTokens {
 		// The access token is missing and tokens are not requried, so accept the request.
@@ -76,10 +78,9 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	}
 	// Attempt to verify the token.
 	cl, err := t.token.Verify(token, jwt.Expected{
-		// Do not specify the Issuer here so we can check for monitoring or the
-		// locate service below.
-		// TODO: explicitly check for the locate service issuer.
-		Subject:  "ndt",
+		Issuer: tokenIssuer,
+		// Do not Verify the Subject. After verification, caller can check the
+		// claim Subject for monitoring, a specific IP address, or service name.
 		Audience: jwt.Audience{t.machine}, // current server.
 		Time:     time.Now(),
 	})
@@ -91,5 +92,5 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	// If the claim Issuer was monitoring, set the context value so subsequent
 	// access controllers can check the context to allow monitoring reqeusts.
 	tokenAccessRequests.WithLabelValues("accepted", cl.Issuer).Inc()
-	return true, SetMonitoring(ctx, cl.Issuer == monitorIssuer)
+	return true, SetClaim(ctx, cl)
 }

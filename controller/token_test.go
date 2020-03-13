@@ -36,8 +36,7 @@ func TestTokenController_Limit(t *testing.T) {
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
-					Issuer:   monitorIssuer,
-					Subject:  "ndt",
+					Issuer:   tokenIssuer,
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
@@ -50,8 +49,7 @@ func TestTokenController_Limit(t *testing.T) {
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
-					Issuer:   "locate.measurementlab.net",
-					Subject:  "ndt",
+					Issuer:   tokenIssuer,
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
@@ -65,8 +63,8 @@ func TestTokenController_Limit(t *testing.T) {
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
-					Issuer:   monitorIssuer,
-					Subject:  "ndt",
+					Issuer:   tokenIssuer,
+					Subject:  monitorSubject,
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
@@ -74,7 +72,7 @@ func TestTokenController_Limit(t *testing.T) {
 			token:      "this-is-a-fake-token",
 			code:       http.StatusOK,
 			visited:    true,
-			monitoring: true, // because the Issuer == monitorIssuer.
+			monitoring: true, // because the Subject == monitorSubject.
 		},
 		{
 			name:    "error-failure-to-verify",
@@ -95,7 +93,7 @@ func TestTokenController_Limit(t *testing.T) {
 			isMonitoring := false
 			next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 				visited = true
-				isMonitoring = GetMonitoring(req.Context())
+				isMonitoring = IsMonitoring(GetClaim(req.Context()))
 			})
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Form = url.Values{}

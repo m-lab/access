@@ -42,14 +42,18 @@ func TestTxController_Limit(t *testing.T) {
 			procPath = tt.procPath
 			device = "eth0"
 			maxRate = tt.limit
-			ctx := context.Background()
-			tx, err := NewTxController(ctx)
-			if !tt.wantErr && (err != nil) {
-				t.Errorf("NewTxController() got %v, want %t", err, tt.wantErr)
-				return
+
+			pfs, err := procfs.NewFS(procPath)
+			rtx.Must(err, "Failed to allocate procfs")
+
+			tx := &TxController{
+				device:  device,
+				limit:   tt.limit,
+				pfs:     pfs,
+				period:  time.Millisecond,
+				current: tt.current,
 			}
-			tx.limit = tt.limit
-			tx.current = tt.current
+
 			visited := false
 			next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 				visited = true

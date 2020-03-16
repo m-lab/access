@@ -2,8 +2,10 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,11 +23,16 @@ var (
 	)
 	requireTokens bool
 	tokenIssuer   string
+	machine       string
 )
+
+// ErrInvalidVerifier may be returned when creating a new TokenController.
+var ErrInvalidVerifier = errors.New("verifier is invalid")
 
 func init() {
 	flag.BoolVar(&requireTokens, "tokencontroller.required", false, "Whether access tokens are required by HTTP-based clients.")
 	flag.StringVar(&tokenIssuer, "tokencontroller.issuer", "locate.measurementlab.net", "The JWT issuer used to verify access tokens.")
+	flag.StringVar(&machine, "tokencontroller.machine", "", "The machine name to expect in the JWT claims.")
 }
 
 // TokenController manages access control for clients providing access_token parameters.
@@ -40,11 +47,19 @@ type Verifier interface {
 }
 
 // NewTokenController creates a new token controller.
-func NewTokenController(name string, verifier Verifier) *TokenController {
+func NewTokenController(verifier Verifier) (*TokenController, error) {
+	if reflect.ValueOf(verifier).IsNil() {
+		// NOTE: use reflect to extract the value because verifier interface
+		// type is non-nil and "verifier == nil" otherwise fails.
+		return nil, ErrInvalidVerifier
+	}
+	if machine == "" {
+		return nil, jwt.ErrInvalidAudience
+	}
 	return &TokenController{
 		token:   verifier,
-		machine: name,
-	}
+		machine: machine,
+	}, nil
 }
 
 // Limit checks client-provided access_tokens. Limit implements the Controller interface.

@@ -48,7 +48,7 @@ type TxController struct {
 
 // NewTxController creates a new instance initialized to run every second.
 // Caller should run Watch in a goroutine to regularly update the current rate.
-func NewTxController() (*TxController, error) {
+func NewTxController(ctx context.Context) (*TxController, error) {
 	if device == "" {
 		return nil, ErrNoDevice
 	}
@@ -67,6 +67,8 @@ func NewTxController() (*TxController, error) {
 		pfs:    pfs,
 		period: 100 * time.Millisecond,
 	}
+	// Run watch in a goroutine.
+	go tx.Watch(ctx)
 	return tx, nil
 }
 

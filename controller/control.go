@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"log"
 	"net/http"
 
 	"github.com/justinas/alice"
@@ -61,12 +62,16 @@ func Setup(ctx context.Context, v Verifier) (alice.Chain, *TxController) {
 	token, err := NewTokenController(v)
 	if err == nil {
 		ac = ac.Append(token.Limit)
+	} else {
+		log.Printf("WARNING: token controller is disabled: %v", err)
 	}
 
 	// If the tx controller is successful, include the tx limit.
 	tx, err := NewTxController(ctx)
 	if err == nil {
 		ac = ac.Append(tx.Limit)
+	} else {
+		log.Printf("WARNING: tx controller is disabled: %v", err)
 	}
 
 	return ac, tx

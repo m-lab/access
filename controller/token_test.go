@@ -90,6 +90,14 @@ func TestTokenController_Limit(t *testing.T) {
 			verifier: nil,
 			wantErr:  true,
 		},
+		{
+			name:    "error-empty-machine",
+			machine: "",
+			verifier: &fakeVerifier{
+				err: fmt.Errorf("fake failure to verify"),
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

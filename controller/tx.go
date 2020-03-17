@@ -46,8 +46,10 @@ type TxController struct {
 	pfs     procfs.FS
 }
 
-// NewTxController creates a new instance initialized to run every second.
-// Caller should run Watch in a goroutine to regularly update the current rate.
+// NewTxController creates a new instance and runs TxController.Watch in a
+// goroutine to observe the current rate every 100 msec. When the given context
+// is canceled or expires, Watch will return and the TxController will no longer
+// be updated until Watch is started again.
 func NewTxController(ctx context.Context) (*TxController, error) {
 	if device == "" {
 		return nil, ErrNoDevice

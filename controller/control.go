@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 
+	// Alice package provides a light weight way to chain HTTP middleware functions.
 	"github.com/justinas/alice"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
@@ -48,9 +49,12 @@ func IsMonitoring(cl *jwt.Claims) bool {
 	return cl.Subject == monitorSubject
 }
 
-// Setup creates sequence of access control http.Handlers. If the
-// verifier is nil then it will be excluded. If the tx controller is
-// unconfigured then it will be excluded.
+// Setup creates a sequence of access control http.Handlers. When the verifier
+// is nil then the token controller will be excluded from the returned handler
+// chain. When the tx controller is unconfigured then the tx controller will be
+// excluded from the returned handler chain. Setup returns the TxController
+// because it provides the Accepter interface for use by servers accepting raw
+// TCP connections. See TxController.Accept for more information.
 func Setup(ctx context.Context, v Verifier) (alice.Chain, *TxController) {
 	// Setup sequence of access control http.Handlers.
 	// Controllers must be applied in specific order:

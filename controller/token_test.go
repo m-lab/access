@@ -84,10 +84,31 @@ func TestTokenController_Limit(t *testing.T) {
 			code:    http.StatusUnauthorized,
 			visited: false, // "next" handler is never visited.
 		},
+		{
+			name:     "error-nil-verifier",
+			machine:  "mlab1.fake0",
+			verifier: nil,
+			wantErr:  true,
+		},
+		{
+			name:    "error-empty-machine",
+			machine: "",
+			verifier: &fakeVerifier{
+				err: fmt.Errorf("fake failure to verify"),
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			token := NewTokenController(tt.machine, tt.verifier)
+			machine = tt.machine
+			token, err := NewTokenController(tt.verifier)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewTokenController() returned err; got %v, wantErr %t", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
 
 			visited := false
 			isMonitoring := false

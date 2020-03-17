@@ -42,13 +42,18 @@ func TestTxController_Limit(t *testing.T) {
 			procPath = tt.procPath
 			device = "eth0"
 			maxRate = tt.limit
-			tx, err := NewTxController()
-			if !tt.wantErr && (err != nil) {
-				t.Errorf("NewTxController() got %v, want %t", err, tt.wantErr)
-				return
+
+			pfs, err := procfs.NewFS(procPath)
+			rtx.Must(err, "Failed to allocate procfs")
+
+			tx := &TxController{
+				device:  device,
+				limit:   tt.limit,
+				pfs:     pfs,
+				period:  time.Millisecond,
+				current: tt.current,
 			}
-			tx.limit = tt.limit
-			tx.current = tt.current
+
 			visited := false
 			next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 				visited = true
@@ -103,7 +108,8 @@ func TestNewTxController(t *testing.T) {
 			device = tt.device
 			procPath = tt.procPath
 			maxRate = tt.limit
-			got, err := NewTxController()
+			ctx := context.Background()
+			got, err := NewTxController(ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewTxController() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -148,18 +154,25 @@ func TestTxController_Watch(t *testing.T) {
 			device = "eth0"
 			procPath = tt.procPath
 			maxRate = tt.limit
-			tx, err := NewTxController()
-			if err != nil {
-				t.Errorf("NewTxController() error = %v, want nil", err)
-				return
+
+			pfs, err := procfs.NewFS(procPath)
+			rtx.Must(err, "Failed to allocate procfs")
+
+			// NewTxController starts Watch in a goroutine. But, we want to call
+			// tx.Watch explicitly below, so create a literal tx controller.
+			tx := &TxController{
+				device: device,
+				limit:  maxRate,
+				pfs:    pfs,
+				period: time.Millisecond,
 			}
+
 			if tt.badProc != "" {
 				pfs, err := procfs.NewFS(tt.badProc)
 				rtx.Must(err, "Failed to allocate procfs for %q", tt.badProc)
 				// New used a good path, but we replace the pfs with a bad proc record.
 				tx.pfs = pfs
 			}
-			tx.period = time.Millisecond
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 			defer cancel()
 			err = tx.Watch(ctx)

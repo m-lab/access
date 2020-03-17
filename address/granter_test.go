@@ -62,7 +62,7 @@ func TestIPGranter_Grant(t *testing.T) {
 			resetExit := osx.MustSetenv("EXIT", tt.grantExit)
 			defer resetExit()
 
-			r := NewIPGranter(tt.max)
+			r := NewIPManager(tt.max)
 			if err := r.Grant(tt.ip); (err != nil) != tt.wantGrantErr {
 				t.Errorf("IPGranter.Grant() error = %v, wantErr %v", err, tt.wantGrantErr)
 				return

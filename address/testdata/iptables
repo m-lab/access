@@ -1,0 +1,3 @@
+#!/bin/bash
+EXIT=${EXIT:-0}
+exit $EXIT

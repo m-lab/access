@@ -37,7 +37,7 @@ func (r *IPManager) Grant(ip net.IP) error {
 		return ErrMaxConcurrent
 	}
 
-	// Note: use use 'insert' (rather than 'append') to place the new rule first, to
+	// Note: use 'insert' (rather than 'append') to place the new rule first, to
 	// a) cooperate with the rules in the environment, b) minimize the time a packet
 	// stays in the chain handling logic.
 	addRule := pipe.Script("Add rules to allow "+ip.String(), ipTable("insert", ip))

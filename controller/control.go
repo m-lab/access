@@ -56,10 +56,11 @@ func IsMonitoring(cl *jwt.Claims) bool {
 // because it provides the Accepter interface for use by servers accepting raw
 // TCP connections. See TxController.Accept for more information.
 func Setup(ctx context.Context, v Verifier) (alice.Chain, *TxController) {
-	// Setup sequence of access control http.Handlers.
-	// Controllers must be applied in specific order:
-	// 1. access token - to validate client and monitoring requests
-	// 2. transmit - to make resource-aware decisions and allow monitoring
+	// Controllers must be applied in specific order so that the tx controller
+	// can access the access token claims (if present) to identify monitoring
+	// requests. When token validation is successful, the validated claims are
+	// added to the HTTP request context. The tx controller looks for claims in
+	// the request context to determine if a request is monitoring (to allow it).
 	ac := alice.New()
 
 	// If the verifier is not nil, include the token limit.

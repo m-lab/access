@@ -3,13 +3,14 @@ package address
 import (
 	"net"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/m-lab/go/osx"
 	"github.com/m-lab/go/rtx"
 )
 
-func TestIPGranter_Grant(t *testing.T) {
+func TestIPManager_Grant(t *testing.T) {
 	cwd, err := os.Getwd()
 	rtx.Must(err, "Failed to get cwd")
 	// Update PATH to prefer fake versions of iptables and ip6tables commands.
@@ -78,4 +79,28 @@ func TestIPGranter_Grant(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIPManager(t *testing.T) {
+	cwd, err := os.Getwd()
+	rtx.Must(err, "Failed to get cwd")
+	// Update PATH to prefer fake versions of iptables and ip6tables commands.
+	resetPath := osx.MustSetenv("PATH", cwd+"/testdata:"+os.Getenv("PATH"))
+	defer resetPath()
+
+	wg := sync.WaitGroup{}
+	mgr := NewIPManager(10)
+	ip := net.ParseIP("127.0.0.2")
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			err := mgr.Grant(ip)
+			if err == nil {
+				// Only try to revoke when the grant was successful.
+				rtx.Must(mgr.Revoke(ip), "Failed to revoke ip")
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 }

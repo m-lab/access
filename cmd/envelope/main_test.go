@@ -26,12 +26,14 @@ func Test_main(t *testing.T) {
 	listenAddr = ":0"
 	*prometheusx.ListenAddress = ":0"
 	verifyKey = flagx.FileBytes(insecurePublicTestKey)
+	// Simulate unencrypted server.
 	mainCancel()
 	main()
 
+	// Simulate tls server.
 	mainCtx, mainCancel = context.WithCancel(context.Background())
-	certFile = "testdata/server-cert.pem"
-	keyFile = "testdata/server-key.pem"
+	certFile = "testdata/insecure-cert.pem"
+	keyFile = "testdata/insecure-key.pem"
 	mainCancel()
 	main()
 }

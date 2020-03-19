@@ -89,7 +89,7 @@ example-signer can create access tokens for local testing.
 go get github.com/m-lab/access/cmd/example-signer
 
 ~/bin/example-signer -private jwk_sig_EdDSA_1 -machine mlab1.lga03 -subject 127.0.0.2
-http://localhost:8880/v1/allow?access_token=eyJhbGciOiJFZERTQSIsImtpZCI6IjEifQ.
+http://localhost:8880/v0/allow?access_token=eyJhbGciOiJFZERTQSIsImtpZCI6IjEifQ.
 eyJhdWQiOlsibWxhYjEubGdhMDMiXSwiZXhwIjoxNTg0NTAyMjEyLCJpc3MiOiJsb2NhdGUubWVhc3VyZW1lb
 nRsYWIubmV0Iiwic3ViIjoiMTI3LjAuMC4yIn0.FZSjjDjWJVGSKzJKJP5Cbaacp8PNqGX5_zETe3SQsXvhlo
 hGlAlKLdhDkjBDIKttXkO3BL5xyQ09cVGfmbelDA

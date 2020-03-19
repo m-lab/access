@@ -112,7 +112,7 @@ func Test_envelopeHandler_AllowRequest(t *testing.T) {
 		removeAfter = time.Millisecond
 		t.Run(tt.name, func(t *testing.T) {
 			rw := httptest.NewRecorder()
-			req := httptest.NewRequest(tt.method, "/v1/allow"+tt.param, nil)
+			req := httptest.NewRequest(tt.method, "/v0/allow"+tt.param, nil)
 			env := &envelopeHandler{
 				manager: &fakeManager{
 					grantErr: tt.grantErr,
@@ -148,13 +148,13 @@ func Test_customFormat(t *testing.T) {
 				URL: url.URL{
 					Scheme:   "https",
 					Host:     "localhost",
-					Path:     "/v1/allow",
+					Path:     "/v0/allow",
 					RawQuery: "?this-will-be-removed",
 				},
 				StatusCode: http.StatusOK,
 				Size:       321,
 			},
-			want: "127.0.0.1:1234 2019-01-02T12:30:45Z HTTP/1.1 POST https://localhost/v1/allow 200 321\n",
+			want: "127.0.0.1:1234 2019-01-02T12:30:45Z HTTP/1.1 POST https://localhost/v0/allow 200 321\n",
 		},
 	}
 	for _, tt := range tests {

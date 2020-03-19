@@ -51,5 +51,5 @@ func main() {
 	// be added as the access_token= parameter.
 	token, err := priv.Sign(cl)
 	rtx.Must(err, "Failed to sign claims")
-	fmt.Printf("http://localhost:8800/v1/allow?access_token=%s\n", token)
+	fmt.Printf("http://localhost:8800/v0/allow?access_token=%s\n", token)
 }

@@ -133,10 +133,11 @@ func main() {
 
 	env := getEnvelopeHandler()
 	ctl, _ := controller.Setup(mainCtx, verify)
-	// Log all requests.
+	// Handle all requests using the alice http handler chaining library.
+	// Start with request logging.
 	ac := alice.New(logger).Extend(ctl)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/allow", env.AllowRequest)
+	mux.HandleFunc("/v0/allow", env.AllowRequest)
 	srv := &http.Server{
 		Addr:    listenAddr,
 		Handler: ac.Then(mux),

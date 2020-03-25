@@ -33,7 +33,7 @@ func TestGetClaim(t *testing.T) {
 
 func TestIsMonitoring(t *testing.T) {
 	cl := &jwt.Claims{
-		Issuer:  "locate",
+		Issuer:  locateIssuer,
 		Subject: monitorSubject,
 	}
 	if !IsMonitoring(cl) {

@@ -55,7 +55,7 @@ func IsMonitoring(cl *jwt.Claims) bool {
 // excluded from the returned handler chain. Setup returns the TxController
 // because it provides the Accepter interface for use by servers accepting raw
 // TCP connections. See TxController.Accept for more information.
-func Setup(ctx context.Context, v Verifier, machine string) (alice.Chain, *TxController) {
+func Setup(ctx context.Context, v Verifier, required bool, machine string) (alice.Chain, *TxController) {
 	// Controllers must be applied in specific order so that the tx controller
 	// can access the access token claims (if present) to identify monitoring
 	// requests. When token validation is successful, the validated claims are
@@ -68,7 +68,7 @@ func Setup(ctx context.Context, v Verifier, machine string) (alice.Chain, *TxCon
 		Issuer:   "locate",
 		Audience: jwt.Audience{machine},
 	}
-	token, err := NewTokenController(v, false, exp)
+	token, err := NewTokenController(v, required, exp)
 	if err == nil {
 		ac = ac.Append(token.Limit)
 	} else {

@@ -31,6 +31,7 @@ var (
 	maxIPs      int64
 	certFile    string
 	keyFile     string
+	machine     string
 )
 
 func init() {
@@ -40,6 +41,8 @@ func init() {
 	flag.StringVar(&keyFile, "envelope.cert", "", "TLS certificate for envelope server")
 	flag.StringVar(&certFile, "envelope.key", "", "TLS key for envelope server")
 	flag.Var(&verifyKey, "envelope.verify-key", "Public key for verifying access tokens")
+	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")
+
 }
 
 type manager interface {
@@ -124,6 +127,7 @@ var getEnvelopeHandler = func() envelopeHandler {
 func main() {
 	flag.Parse()
 	log.SetFlags(log.LUTC | log.Lshortfile | log.LstdFlags)
+	rtx.Must(flagx.ArgsFromEnv(flag.CommandLine), "Could not parse env args")
 
 	prom := prometheusx.MustServeMetrics()
 	defer prom.Close()
@@ -132,7 +136,7 @@ func main() {
 	rtx.Must(err, "Failed to create token verifier")
 
 	env := getEnvelopeHandler()
-	ctl, _ := controller.Setup(mainCtx, verify)
+	ctl, _ := controller.Setup(mainCtx, verify, machine)
 	// Handle all requests using the alice http handler chaining library.
 	// Start with request logging.
 	ac := alice.New(logger).Extend(ctl)

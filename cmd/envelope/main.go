@@ -25,13 +25,14 @@ import (
 )
 
 var (
-	verifyKey   = flagx.FileBytes{}
-	listenAddr  string
-	removeAfter time.Duration
-	maxIPs      int64
-	certFile    string
-	keyFile     string
-	machine     string
+	verifyKey     = flagx.FileBytes{}
+	listenAddr    string
+	removeAfter   time.Duration
+	maxIPs        int64
+	certFile      string
+	keyFile       string
+	machine       string
+	requireTokens bool
 )
 
 func init() {
@@ -41,6 +42,7 @@ func init() {
 	flag.StringVar(&keyFile, "envelope.cert", "", "TLS certificate for envelope server")
 	flag.StringVar(&certFile, "envelope.key", "", "TLS key for envelope server")
 	flag.Var(&verifyKey, "envelope.verify-key", "Public key for verifying access tokens")
+	flag.BoolVar(&requireTokens, "envelope.require-tokens", true, "Require access token in requests")
 	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")
 
 }
@@ -136,7 +138,7 @@ func main() {
 	rtx.Must(err, "Failed to create token verifier")
 
 	env := getEnvelopeHandler()
-	ctl, _ := controller.Setup(mainCtx, verify, machine)
+	ctl, _ := controller.Setup(mainCtx, verify, requireTokens, machine)
 	// Handle all requests using the alice http handler chaining library.
 	// Start with request logging.
 	ac := alice.New(logger).Extend(ctl)

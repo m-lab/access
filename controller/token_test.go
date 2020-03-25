@@ -34,11 +34,11 @@ func TestTokenController_Limit(t *testing.T) {
 	}{
 		{
 			name:    "success-without-token",
-			issuer:  "locate",
+			issuer:  locateIssuer,
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
-					Issuer:   "locate",
+					Issuer:   locateIssuer,
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
@@ -48,11 +48,11 @@ func TestTokenController_Limit(t *testing.T) {
 		},
 		{
 			name:    "success-with-token",
-			issuer:  "locate",
+			issuer:  locateIssuer,
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
-					Issuer:   "locate",
+					Issuer:   locateIssuer,
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
@@ -63,11 +63,11 @@ func TestTokenController_Limit(t *testing.T) {
 		},
 		{
 			name:    "success-with-token-with-monitoring-issuer",
-			issuer:  "locate",
+			issuer:  locateIssuer,
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
-					Issuer:   "locate",
+					Issuer:   locateIssuer,
 					Subject:  monitorSubject,
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
@@ -80,7 +80,7 @@ func TestTokenController_Limit(t *testing.T) {
 		},
 		{
 			name:    "error-failure-to-verify",
-			issuer:  "locate",
+			issuer:  locateIssuer,
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				err: fmt.Errorf("fake failure to verify"),
@@ -91,14 +91,14 @@ func TestTokenController_Limit(t *testing.T) {
 		},
 		{
 			name:     "error-nil-verifier",
-			issuer:   "locate",
+			issuer:   locateIssuer,
 			machine:  "mlab1.fake0",
 			verifier: nil,
 			wantErr:  true,
 		},
 		{
 			name:    "error-empty-machine",
-			issuer:  "locate",
+			issuer:  locateIssuer,
 			machine: "",
 			verifier: &fakeVerifier{
 				err: fmt.Errorf("fake failure to verify"),

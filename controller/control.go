@@ -12,6 +12,12 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
+// TODO: replace with constants from the locate service repository.
+const (
+	locateIssuer   = "locate"
+	monitorSubject = "monitoring"
+)
+
 // Controller is the interface that all access control types should implement.
 type Controller interface {
 	Limit(next http.Handler) http.Handler
@@ -39,8 +45,6 @@ func GetClaim(ctx context.Context) *jwt.Claims {
 	return value.(*jwt.Claims)
 }
 
-const monitorSubject = "monitoring"
-
 // IsMonitoring reports whether (possibly nil) claim is from a monitoring issuer.
 func IsMonitoring(cl *jwt.Claims) bool {
 	if cl == nil {
@@ -67,7 +71,7 @@ func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string) 
 
 	// If the verifier is not nil, include the token limit.
 	exp := jwt.Expected{
-		Issuer:   "locate",
+		Issuer:   locateIssuer,
 		Audience: jwt.Audience{machine},
 	}
 	token, err := NewTokenController(v, tokenRequired, exp)

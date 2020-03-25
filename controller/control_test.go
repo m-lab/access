@@ -33,7 +33,7 @@ func TestGetClaim(t *testing.T) {
 
 func TestIsMonitoring(t *testing.T) {
 	cl := &jwt.Claims{
-		Issuer:  tokenIssuer,
+		Issuer:  "locate",
 		Subject: monitorSubject,
 	}
 	if !IsMonitoring(cl) {
@@ -73,8 +73,7 @@ func TestSetupDefault(t *testing.T) {
 			// Use synthetic proc data to allow tests to work on any platform.
 			procPath = "testdata/proc-success"
 			device = tt.device
-			machine = tt.hostname
-			ac, tx := Setup(ctx, tt.v)
+			ac, tx := Setup(ctx, tt.v, tt.hostname)
 			// The tx controller only works in linux; only report errors for linux.
 			if (tx != nil) == tt.wantNil {
 				t.Errorf("Setup() tx = %v, wantNil %v", tx, tt.wantNil)

@@ -42,7 +42,7 @@ func init() {
 	flag.StringVar(&keyFile, "envelope.cert", "", "TLS certificate for envelope server")
 	flag.StringVar(&certFile, "envelope.key", "", "TLS key for envelope server")
 	flag.Var(&verifyKey, "envelope.verify-key", "Public key for verifying access tokens")
-	flag.BoolVar(&requireTokens, "envelope.require-tokens", true, "Require access token in requests")
+	flag.BoolVar(&requireTokens, "envelope.token-required", true, "Require access token in requests")
 	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")
 
 }

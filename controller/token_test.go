@@ -23,6 +23,7 @@ func (f *fakeVerifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, erro
 func TestTokenController_Limit(t *testing.T) {
 	tests := []struct {
 		name       string
+		issuer     string
 		machine    string
 		verifier   *fakeVerifier
 		token      string
@@ -33,10 +34,11 @@ func TestTokenController_Limit(t *testing.T) {
 	}{
 		{
 			name:    "success-without-token",
+			issuer:  "locate",
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
-					Issuer:   tokenIssuer,
+					Issuer:   "locate",
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
@@ -46,10 +48,11 @@ func TestTokenController_Limit(t *testing.T) {
 		},
 		{
 			name:    "success-with-token",
+			issuer:  "locate",
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
-					Issuer:   tokenIssuer,
+					Issuer:   "locate",
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
@@ -60,10 +63,11 @@ func TestTokenController_Limit(t *testing.T) {
 		},
 		{
 			name:    "success-with-token-with-monitoring-issuer",
+			issuer:  "locate",
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
-					Issuer:   tokenIssuer,
+					Issuer:   "locate",
 					Subject:  monitorSubject,
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
@@ -76,6 +80,7 @@ func TestTokenController_Limit(t *testing.T) {
 		},
 		{
 			name:    "error-failure-to-verify",
+			issuer:  "locate",
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				err: fmt.Errorf("fake failure to verify"),
@@ -86,13 +91,24 @@ func TestTokenController_Limit(t *testing.T) {
 		},
 		{
 			name:     "error-nil-verifier",
+			issuer:   "locate",
 			machine:  "mlab1.fake0",
 			verifier: nil,
 			wantErr:  true,
 		},
 		{
 			name:    "error-empty-machine",
+			issuer:  "locate",
 			machine: "",
+			verifier: &fakeVerifier{
+				err: fmt.Errorf("fake failure to verify"),
+			},
+			wantErr: true,
+		},
+		{
+			name:    "error-empty-issuer",
+			issuer:  "",
+			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
 				err: fmt.Errorf("fake failure to verify"),
 			},
@@ -101,8 +117,11 @@ func TestTokenController_Limit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			machine = tt.machine
-			token, err := NewTokenController(tt.verifier)
+			exp := jwt.Expected{
+				Issuer:   tt.issuer,
+				Audience: jwt.Audience{tt.machine},
+			}
+			token, err := NewTokenController(tt.verifier, true, exp)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewTokenController() returned err; got %v, wantErr %t", err, tt.wantErr)
 			}

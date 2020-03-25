@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"flag"
 	"net/http"
 	"reflect"
 	"time"
@@ -21,44 +20,54 @@ var (
 		},
 		[]string{"request", "reason"},
 	)
-	requireTokens bool
-	tokenIssuer   string
-	machine       string
 )
 
 // ErrInvalidVerifier may be returned when creating a new TokenController.
 var ErrInvalidVerifier = errors.New("verifier is invalid")
 
-func init() {
-	flag.BoolVar(&requireTokens, "tokencontroller.required", false, "Whether access tokens are required by HTTP-based clients.")
-	flag.StringVar(&tokenIssuer, "tokencontroller.issuer", "locate.measurementlab.net", "The JWT issuer used to verify access tokens.")
-	flag.StringVar(&machine, "tokencontroller.machine", "", "The machine name to expect in the JWT claims.")
-}
-
-// TokenController manages access control for clients providing access_token parameters.
+// TokenController manages access control for clients providing access_token
+// parameters in HTTP requests.
 type TokenController struct {
-	token   Verifier
-	machine string
+	// Public is a public key access token verifier.
+	Public Verifier
+
+	// When access tokens are required, then clients without tokens are
+	// rejected. When tokens are not required and clients do not provide an
+	// access token the connection wil be allowed. In either case, when an
+	// access token is provided it must be valid to be accepted.
+	Required bool
+
+	// Expected JWT fields are used to validate access token claims.
+	// Client-provided claims are only valid if each non-empty expected field
+	// matches the corresponding claims field.
+	Expected jwt.Expected
 }
 
-// Verifier is used by the TokenController to verify JWT claims in access tokens.
+// Verifier is used by the TokenController to verify JWT claims in access
+// tokens.
 type Verifier interface {
 	Verify(token string, exp jwt.Expected) (*jwt.Claims, error)
 }
 
-// NewTokenController creates a new token controller.
-func NewTokenController(verifier Verifier) (*TokenController, error) {
+// NewTokenController creates a new token controller that requires tokens (or
+// not) and the default expected claims. An audience must be specified. The
+// issuer should be provided.
+func NewTokenController(verifier Verifier, required bool, exp jwt.Expected) (*TokenController, error) {
 	if reflect.ValueOf(verifier).IsNil() {
 		// NOTE: use reflect to extract the value because verifier interface
 		// type is non-nil and "verifier == nil" otherwise fails.
 		return nil, ErrInvalidVerifier
 	}
-	if machine == "" {
+	if exp.Issuer == "" {
+		return nil, jwt.ErrInvalidIssuer
+	}
+	if exp.Audience == nil || exp.Audience.Contains("") {
 		return nil, jwt.ErrInvalidAudience
 	}
 	return &TokenController{
-		token:   verifier,
-		machine: machine,
+		Public:   verifier,
+		Required: required,
+		Expected: exp,
 	}, nil
 }
 
@@ -86,19 +95,15 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	// NOTE: r.Form is not populated until calling ParseForm.
 	r.ParseForm()
 	token := r.Form.Get("access_token")
-	if token == "" && !requireTokens {
+	if token == "" && !t.Required {
 		// The access token is missing and tokens are not requried, so accept the request.
 		tokenAccessRequests.WithLabelValues("accepted", "empty").Inc()
 		return true, ctx
 	}
 	// Attempt to verify the token.
-	cl, err := t.token.Verify(token, jwt.Expected{
-		Issuer: tokenIssuer,
-		// Do not Verify the Subject. After verification, caller can check the
-		// claim Subject for monitoring, a specific IP address, or service name.
-		Audience: jwt.Audience{t.machine}, // current server.
-		Time:     time.Now(),
-	})
+	exp := t.Expected
+	exp.Time = time.Now()
+	cl, err := t.Public.Verify(token, exp)
 	if err != nil {
 		// The access token was invalid; reject this request.
 		tokenAccessRequests.WithLabelValues("rejected", "invalid").Inc()

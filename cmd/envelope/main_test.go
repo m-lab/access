@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +21,11 @@ import (
 	"github.com/m-lab/go/flagx"
 	"github.com/m-lab/go/prometheusx"
 )
+
+func init() {
+	// Disable logging during unit testing.
+	log.SetOutput(ioutil.Discard)
+}
 
 func Test_main(t *testing.T) {
 	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +

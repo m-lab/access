@@ -12,6 +12,12 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
+// TODO: replace with constants from the locate service repository.
+const (
+	locateIssuer   = "locate"
+	monitorSubject = "monitoring"
+)
+
 // Controller is the interface that all access control types should implement.
 type Controller interface {
 	Limit(next http.Handler) http.Handler
@@ -39,8 +45,6 @@ func GetClaim(ctx context.Context) *jwt.Claims {
 	return value.(*jwt.Claims)
 }
 
-const monitorSubject = "monitoring"
-
 // IsMonitoring reports whether (possibly nil) claim is from a monitoring issuer.
 func IsMonitoring(cl *jwt.Claims) bool {
 	if cl == nil {
@@ -54,8 +58,10 @@ func IsMonitoring(cl *jwt.Claims) bool {
 // chain. When the tx controller is unconfigured then the tx controller will be
 // excluded from the returned handler chain. Setup returns the TxController
 // because it provides the Accepter interface for use by servers accepting raw
-// TCP connections. See TxController.Accept for more information.
-func Setup(ctx context.Context, v Verifier) (alice.Chain, *TxController) {
+// TCP connections. See TxController.Accept for more information. When
+// tokenRequired is true, then the token controller requires valid access tokens
+// for the named machine.
+func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string) (alice.Chain, *TxController) {
 	// Controllers must be applied in specific order so that the tx controller
 	// can access the access token claims (if present) to identify monitoring
 	// requests. When token validation is successful, the validated claims are
@@ -64,7 +70,11 @@ func Setup(ctx context.Context, v Verifier) (alice.Chain, *TxController) {
 	ac := alice.New()
 
 	// If the verifier is not nil, include the token limit.
-	token, err := NewTokenController(v)
+	exp := jwt.Expected{
+		Issuer:   locateIssuer,
+		Audience: jwt.Audience{machine},
+	}
+	token, err := NewTokenController(v, tokenRequired, exp)
 	if err == nil {
 		ac = ac.Append(token.Limit)
 	} else {

@@ -10,9 +10,6 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-// ErrTokenWithoutHeader is returned when trying to verify a token that has not header.
-var ErrTokenWithoutHeader = errors.New("Given token has not header")
-
 // ErrKeyIDNotFound is returned when trying to verify a token when there are no
 // corresponding key IDs matching the token header.
 var ErrKeyIDNotFound = errors.New("Key ID not found for given token header")

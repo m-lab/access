@@ -112,11 +112,18 @@ func TestVerifyErrors(t *testing.T) {
 				"iJdLCJleHAiOjE1Nzk5MTc3MzksImlzcyI6ImxvY2F0ZS5tZWFzdXJlbWVudGxhYi5uZXQiLCJqdGkiOiJ3aGF" +
 				"0d2hhdCIsInN1YiI6Im5kdCJ9.07Wmg_G-lDDuPz0dLsuXjZLZN8w37BGIN1RTUK4rSJ-3OIFtsZ9b7pVS0uHPUrD0kW9mbuv0Ouu_eD0v88Bp-w",
 		},
+		{
+			name: "error-verify-token-without-keyid",
+			// same token as above with the header replaced with an empty "{}" object.
+			token: "e30K.eyJhdWQiOlsibWxhYjEubGdhMDMiLCJtbGFiMi5hdGwwM" +
+				"iJdLCJleHAiOjE1Nzk5MTc3MzksImlzcyI6ImxvY2F0ZS5tZWFzdXJlbWVudGxhYi5uZXQiLCJqdGkiOiJ3aGF" +
+				"0d2hhdCIsInN1YiI6Im5kdCJ9.07Wmg_G-lDDuPz0dLsuXjZLZN8w37BGIN1RTUK4rSJ-3OIFtsZ9b7pVS0uHPUrD0kW9mbuv0Ouu_eD0v88Bp-w",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := &Verifier{
-				pub: key,
+				keys: []*jose.JSONWebKey{key},
 			}
 			_, err := k.Verify(tt.token, jwt.Expected{})
 			if err == nil {

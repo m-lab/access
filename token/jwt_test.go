@@ -59,7 +59,7 @@ func TestSignAndVerify(t *testing.T) {
 			wantVerifyErr: true,
 		},
 		{
-			name: "error-bad-verify-key",
+			name: "error-duplicate-verify-key-id",
 			skey: insecurePrivateTestKey,
 			vkey: insecurePublicTestKey,
 			cl: jwt.Claims{

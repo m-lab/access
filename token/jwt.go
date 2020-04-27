@@ -14,9 +14,13 @@ import (
 // corresponding key IDs matching the token header.
 var ErrKeyIDNotFound = errors.New("Key ID not found for given token header")
 
+// ErrDuplicateKeyID is returned when initializing a verifier with multiple keys
+// with the same KeyID. KeyIDs should be unique.
+var ErrDuplicateKeyID = errors.New("Duplicate KeyID found")
+
 // Verifier supports operations on a public JWK.
 type Verifier struct {
-	keys []*jose.JSONWebKey
+	keys map[string]*jose.JSONWebKey
 }
 
 // Signer supports operations on a private JWK.
@@ -45,31 +49,25 @@ func (k *Signer) Sign(cl jwt.Claims) (string, error) {
 }
 
 // NewVerifier accepts serialized, public JWKs and creates a new Verifier
-// instance. Caller may pass multiple verifier keys to recognize and support
-// support key rotation of signer keys, or multiple issuers. When providing
-// multiple keys each should have a distinct "keyid". Behavior is undefined
-// when keys have the same keyid.
+// instance. Caller may pass multiple verifier keys to recognize and support key
+// rotation of signer keys, or multiple issuers. When providing multiple keys
+// each must have a distinct "keyid". An error derived from ErrDuplicateKeyID is
+// returned when keys have the same keyid.
 func NewVerifier(keys ...[]byte) (*Verifier, error) {
-	pubKeys := []*jose.JSONWebKey{}
+	pubKeys := map[string]*jose.JSONWebKey{}
 	for i := range keys {
 		pub, err := LoadJSONWebKey(keys[i], true)
 		if err != nil {
 			return nil, err
 		}
-		pubKeys = append(pubKeys, pub)
+		if _, dupKeyID := pubKeys[pub.KeyID]; dupKeyID {
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateKeyID, pub.KeyID)
+		}
+		pubKeys[pub.KeyID] = pub
 	}
 	return &Verifier{
 		keys: pubKeys,
 	}, nil
-}
-
-func (k *Verifier) findKeyForKeyID(keyID string) *jose.JSONWebKey {
-	for i := range k.keys {
-		if k.keys[i].KeyID == keyID {
-			return k.keys[i]
-		}
-	}
-	return nil
 }
 
 // Claims extracts the claims from a signed token, but does not
@@ -84,8 +82,8 @@ func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 	// at least one header is present. And, we will not support tokens with
 	// multiple signatures/headers.
 	keyID := obj.Headers[0].KeyID
-	pub := k.findKeyForKeyID(keyID)
-	if pub == nil {
+	pub, found := k.keys[keyID]
+	if !found {
 		return nil, fmt.Errorf("%w: %s", ErrKeyIDNotFound, keyID)
 	}
 	// Claims validates the jwt signature before extracting the token claims.

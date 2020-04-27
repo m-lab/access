@@ -4,14 +4,23 @@ package token
 
 import (
 	"errors"
+	"fmt"
 
 	jose "gopkg.in/square/go-jose.v2"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
+// ErrKeyIDNotFound is returned when trying to verify a token when there are no
+// corresponding key IDs matching the token header.
+var ErrKeyIDNotFound = errors.New("Key ID not found for given token header")
+
+// ErrDuplicateKeyID is returned when initializing a verifier with multiple keys
+// with the same KeyID. KeyIDs should be unique.
+var ErrDuplicateKeyID = errors.New("Duplicate KeyID found")
+
 // Verifier supports operations on a public JWK.
 type Verifier struct {
-	pub *jose.JSONWebKey
+	keys map[string]*jose.JSONWebKey
 }
 
 // Signer supports operations on a private JWK.
@@ -39,14 +48,25 @@ func (k *Signer) Sign(cl jwt.Claims) (string, error) {
 	return k.Builder.Claims(cl).CompactSerialize()
 }
 
-// NewVerifier accepts a serialized, public JWK and creates a new Verifier instance.
-func NewVerifier(key []byte) (*Verifier, error) {
-	pub, err := LoadJSONWebKey(key, true)
-	if err != nil {
-		return nil, err
+// NewVerifier accepts serialized, public JWKs and creates a new Verifier
+// instance. Caller may pass multiple verifier keys to recognize and support key
+// rotation of signer keys, or multiple issuers. When providing multiple keys
+// each must have a distinct "keyid". An error derived from ErrDuplicateKeyID is
+// returned when keys have the same keyid.
+func NewVerifier(keys ...[]byte) (*Verifier, error) {
+	pubKeys := map[string]*jose.JSONWebKey{}
+	for i := range keys {
+		pub, err := LoadJSONWebKey(keys[i], true)
+		if err != nil {
+			return nil, err
+		}
+		if _, dupKeyID := pubKeys[pub.KeyID]; dupKeyID {
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateKeyID, pub.KeyID)
+		}
+		pubKeys[pub.KeyID] = pub
 	}
 	return &Verifier{
-		pub: pub,
+		keys: pubKeys,
 	}, nil
 }
 
@@ -58,9 +78,17 @@ func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 	if err != nil {
 		return nil, err
 	}
-	cl := &jwt.Claims{}
+	// NOTE: if ParseSigned returns without error, then we are guaranteed that
+	// at least one header is present. And, we will not support tokens with
+	// multiple signatures/headers.
+	keyID := obj.Headers[0].KeyID
+	pub, found := k.keys[keyID]
+	if !found {
+		return nil, fmt.Errorf("%w: %s", ErrKeyIDNotFound, keyID)
+	}
 	// Claims validates the jwt signature before extracting the token claims.
-	err = obj.Claims(k.pub, cl)
+	cl := &jwt.Claims{}
+	err = obj.Claims(pub, cl)
 	if err != nil {
 		return nil, err
 	}

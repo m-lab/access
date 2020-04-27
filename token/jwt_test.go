@@ -18,13 +18,14 @@ func TestSignAndVerify(t *testing.T) {
 	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
 		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
 	tests := []struct {
-		name          string
-		skey          string
-		vkey          string
-		cl            jwt.Claims
-		exp           jwt.Expected
-		wantSignErr   bool
-		wantVerifyErr bool
+		name                string
+		skey                string
+		vkey                string
+		cl                  jwt.Claims
+		exp                 jwt.Expected
+		wantSignErr         bool
+		wantVerifyErr       bool
+		wantDuplicateKeyErr bool
 	}{
 		{
 			name: "success",
@@ -57,6 +58,18 @@ func TestSignAndVerify(t *testing.T) {
 			},
 			wantVerifyErr: true,
 		},
+		{
+			name: "error-duplicate-verify-key-id",
+			skey: insecurePrivateTestKey,
+			vkey: insecurePublicTestKey,
+			cl: jwt.Claims{
+				Issuer:   "issuer",
+				Audience: []string{"mlab1", "mlab2"},
+				Expiry:   jwt.NewNumericDate(time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC).Add(time.Minute)),
+			},
+			wantVerifyErr:       true,
+			wantDuplicateKeyErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -73,7 +86,15 @@ func TestSignAndVerify(t *testing.T) {
 				t.Fatalf("Failed to sign claim: %#v", tt.cl)
 			}
 
-			v, err := NewVerifier([]byte(tt.vkey))
+			keys := [][]byte{
+				[]byte(tt.vkey),
+			}
+			if tt.wantDuplicateKeyErr {
+				// Append the verify key twice so there is a duplicate keyid.
+				keys = append(keys, []byte(tt.vkey))
+			}
+
+			v, err := NewVerifier(keys...)
 			if tt.wantVerifyErr != (err != nil) {
 				t.Fatalf("NewVerifier failed to parse key: %v", err)
 			}
@@ -112,11 +133,18 @@ func TestVerifyErrors(t *testing.T) {
 				"iJdLCJleHAiOjE1Nzk5MTc3MzksImlzcyI6ImxvY2F0ZS5tZWFzdXJlbWVudGxhYi5uZXQiLCJqdGkiOiJ3aGF" +
 				"0d2hhdCIsInN1YiI6Im5kdCJ9.07Wmg_G-lDDuPz0dLsuXjZLZN8w37BGIN1RTUK4rSJ-3OIFtsZ9b7pVS0uHPUrD0kW9mbuv0Ouu_eD0v88Bp-w",
 		},
+		{
+			name: "error-verify-token-without-keyid",
+			// same token as above with the header replaced with an empty "{}" object.
+			token: "e30K.eyJhdWQiOlsibWxhYjEubGdhMDMiLCJtbGFiMi5hdGwwM" +
+				"iJdLCJleHAiOjE1Nzk5MTc3MzksImlzcyI6ImxvY2F0ZS5tZWFzdXJlbWVudGxhYi5uZXQiLCJqdGkiOiJ3aGF" +
+				"0d2hhdCIsInN1YiI6Im5kdCJ9.07Wmg_G-lDDuPz0dLsuXjZLZN8w37BGIN1RTUK4rSJ-3OIFtsZ9b7pVS0uHPUrD0kW9mbuv0Ouu_eD0v88Bp-w",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k := &Verifier{
-				pub: key,
+				keys: map[string]*jose.JSONWebKey{"112": key},
 			}
 			_, err := k.Verify(tt.token, jwt.Expected{})
 			if err == nil {

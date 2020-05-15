@@ -34,7 +34,7 @@ var (
 
 func init() {
 	flag.StringVar(&device, "txcontroller.device", "", "Calculate bytes transmitted from this device.")
-	flag.Uint64Var(&maxRate, "txcontroller.max-rate", 0, "The max rate beyond which, the TxController will reject new clients")
+	flag.Uint64Var(&maxRate, "txcontroller.max-rate", 0, "The max rate (in bit/s) beyond which, the TxController will reject new clients")
 }
 
 // TxController calculates the bytes transmitted every period from the named device.

@@ -1,4 +1,4 @@
-// Package address supports managing access for a small pool of IP addresses
+// Package address supports managing access for a small pool of IP subnets
 // using iptables.
 package address
 
@@ -12,7 +12,7 @@ import (
 	"gopkg.in/m-lab/pipe.v3"
 )
 
-// IPManager supports granting IP access using iptables or ip6tables.
+// IPManager supports granting IP subnet access using iptables or ip6tables.
 type IPManager struct {
 	*semaphore.Weighted
 }
@@ -20,7 +20,7 @@ type IPManager struct {
 // ErrMaxConcurrent is returned when the max concurrent grants has already been reached.
 var ErrMaxConcurrent = errors.New("max concurrent reached")
 
-// NewIPManager creates a new instance that will allow granting up to max IPs
+// NewIPManager creates a new instance that will allow granting up to max IP subnets
 // concurrently. Due to overhead in iptable processing and the impact that could
 // have on measurements, max should be small.
 func NewIPManager(max int64) *IPManager {
@@ -29,9 +29,9 @@ func NewIPManager(max int64) *IPManager {
 	}
 }
 
-// Grant adds an iptables/ip6tables rule to allow packets from the given IP on
-// the INPUT chain. On success, the caller must call Revoke to allow a new Grant
-// in the future.
+// Grant adds an iptables/ip6tables rule to allow packets from a subnet
+// containing the given IP on the INPUT chain. On success, the caller must call
+// Revoke to allow a new Grants in the future.
 func (r *IPManager) Grant(ip net.IP) error {
 	if !r.TryAcquire(1) {
 		return ErrMaxConcurrent
@@ -64,13 +64,13 @@ func (r *IPManager) Revoke(ip net.IP) error {
 
 func ipTable(command string, ip net.IP) pipe.Pipe {
 	// Parameters are the same for IPv4 and IPv6 addresses, but the command is not.
-	cmd := cmdForIP(ip)
-	return pipe.Exec(cmd, "--"+command+"=INPUT", "--source="+ip.String(), "--jump=ACCEPT")
+	cmd, subnet := cmdForIP(ip)
+	return pipe.Exec(cmd, "--"+command+"=INPUT", "--source="+ip.String()+subnet, "--jump=ACCEPT")
 }
 
-func cmdForIP(ip net.IP) string {
+func cmdForIP(ip net.IP) (string, string) {
 	if ip.To4() != nil {
-		return "iptables"
+		return "iptables", "/24"
 	}
-	return "ip6tables"
+	return "ip6tables", "/64"
 }

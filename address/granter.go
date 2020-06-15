@@ -15,6 +15,7 @@ import (
 // IPManager supports granting IP subnet access using iptables or ip6tables.
 type IPManager struct {
 	*semaphore.Weighted
+	origRules []byte
 }
 
 // ErrMaxConcurrent is returned when the max concurrent grants has already been reached.

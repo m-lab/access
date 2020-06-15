@@ -25,25 +25,25 @@ import (
 )
 
 var (
-	verifyKey     = flagx.FileBytes{}
+	verifyKey     = flagx.FileBytesArray{}
 	listenAddr    string
-	removeAfter   time.Duration
 	maxIPs        int64
 	certFile      string
 	keyFile       string
 	machine       string
 	requireTokens bool
+	subject       string
 )
 
 func init() {
 	flag.StringVar(&listenAddr, "envelope.listen-address", ":8880", "Listen address for the envelope access API")
-	flag.DurationVar(&removeAfter, "envelope.timeout-after", time.Minute, "Remove allowed IPs after given duration")
 	flag.Int64Var(&maxIPs, "envelope.max-clients", 1, "Maximum number of concurrent client IPs allowed")
 	flag.StringVar(&keyFile, "envelope.cert", "", "TLS certificate for envelope server")
 	flag.StringVar(&certFile, "envelope.key", "", "TLS key for envelope server")
-	flag.Var(&verifyKey, "envelope.verify-key", "Public key for verifying access tokens")
+	flag.Var(&verifyKey, "envelope.verify-key", "Public key(s) for verifying access tokens")
 	flag.BoolVar(&requireTokens, "envelope.token-required", true, "Require access token in requests")
 	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")
+	flag.StringVar(&subject, "envelope.subject", "", "The subject (service name) expected in access token claims")
 
 }
 
@@ -54,6 +54,7 @@ type manager interface {
 
 type envelopeHandler struct {
 	manager
+	subject string
 }
 
 func logger(next http.Handler) http.Handler {
@@ -89,17 +90,33 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	// Use the claim subject as the client IP.
-	ip := net.ParseIP(cl.Subject)
-	if ip == nil {
+	if cl.Subject != env.subject {
+		logx.Debug.Println("wrong subject claim")
 		rw.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	// Attempt to grant access for the client IP.
-	err := env.Grant(ip)
+	// Tests may run (possibly repeatedly) until the claim expires.
+	deadline := cl.Expiry.Time()
+	if deadline.Before(time.Now()) {
+		logx.Debug.Println("already past expiration")
+		rw.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Use client remote address as the basis of granting temporary subnet access.
+	host, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		logx.Debug.Println("failed to split remote addr")
+		rw.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	allow := net.ParseIP(host)
+	err = env.Grant(allow)
 	switch {
 	case err == address.ErrMaxConcurrent:
+		logx.Debug.Println("grant limit reached")
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		return
 	case err != nil:
@@ -108,7 +125,7 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(req.Context(), removeAfter)
+	ctx, cancel := context.WithDeadline(req.Context(), deadline)
 	defer cancel()
 	// Keep the lease until:
 	// * client disconnects.
@@ -116,13 +133,14 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	// * parent context is cancelled.
 	<-ctx.Done()
 	// TODO: handle panic.
-	rtx.PanicOnError(env.Revoke(ip), "Failed to remove rule for "+ip.String())
+	rtx.PanicOnError(env.Revoke(allow), "Failed to remove rule for "+allow.String())
 }
 
 var mainCtx, mainCancel = context.WithCancel(context.Background())
-var getEnvelopeHandler = func() envelopeHandler {
+var getEnvelopeHandler = func(subject string) envelopeHandler {
 	return envelopeHandler{
 		manager: address.NewIPManager(maxIPs),
+		subject: subject,
 	}
 }
 
@@ -134,16 +152,16 @@ func main() {
 	prom := prometheusx.MustServeMetrics()
 	defer prom.Close()
 
-	verify, err := token.NewVerifier(verifyKey)
+	verify, err := token.NewVerifier(verifyKey.Get()...)
 	rtx.Must(err, "Failed to create token verifier")
 
-	env := getEnvelopeHandler()
+	env := getEnvelopeHandler(subject)
 	ctl, _ := controller.Setup(mainCtx, verify, requireTokens, machine)
 	// Handle all requests using the alice http handler chaining library.
 	// Start with request logging.
 	ac := alice.New(logger).Extend(ctl)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v0/allow", env.AllowRequest)
+	mux.HandleFunc("/v0/envelope/access", env.AllowRequest)
 	srv := &http.Server{
 		Addr:    listenAddr,
 		Handler: ac.Then(mux),

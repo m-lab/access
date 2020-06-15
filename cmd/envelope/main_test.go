@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/m-lab/access/controller"
 	"github.com/m-lab/go/flagx"
 	"github.com/m-lab/go/prometheusx"
+	"github.com/m-lab/go/rtx"
 )
 
 func init() {
@@ -28,12 +30,20 @@ func init() {
 }
 
 func Test_main(t *testing.T) {
-	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
-		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
+	// Load fake public verify key.
+	insecurePublicTestKey := []byte(`{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`)
+	f, err := ioutil.TempFile("", "insecure-key-*")
+	rtx.Must(err, "failed to create temp key file")
+	f.Write(insecurePublicTestKey)
+	f.Close()
+	defer os.Remove(f.Name())
+	verifyKey = flagx.FileBytesArray{}
+	verifyKey.Set(f.Name())
+
+	// Simulate unencrypted server.
 	listenAddr = ":0"
 	*prometheusx.ListenAddress = ":0"
-	verifyKey = flagx.FileBytes(insecurePublicTestKey)
-	// Simulate unencrypted server.
 	mainCancel()
 	main()
 
@@ -57,10 +67,12 @@ func (f *fakeManager) Revoke(ip net.IP) error {
 }
 
 func Test_envelopeHandler_AllowRequest(t *testing.T) {
+	subject := "envelope"
 	tests := []struct {
 		name     string
 		param    string
 		method   string
+		remote   string
 		code     int
 		claim    *jwt.Claims
 		grantErr error
@@ -76,21 +88,46 @@ func Test_envelopeHandler_AllowRequest(t *testing.T) {
 			code:   http.StatusInternalServerError,
 		},
 		{
-			name:   "error-claim-subject-is-invalid-ip",
+			name:   "error-claim-subject-is-invalid",
 			method: http.MethodPost,
 			code:   http.StatusBadRequest,
 			claim: &jwt.Claims{
 				Issuer:  "locate",
-				Subject: "this-is-an-invalid-ip",
+				Subject: "wrong-subject",
+			},
+		},
+		{
+			name:   "error-claim-is-already-expired",
+			method: http.MethodPost,
+			code:   http.StatusBadRequest,
+			remote: "127.0.0.2:1234",
+			claim: &jwt.Claims{
+				Issuer:  "locate",
+				Subject: subject,
+				Expiry:  jwt.NewNumericDate(time.Now().Add(-time.Hour)),
 			},
 		},
 		{
 			name:   "error-grant-ip-failure-max-concurrent",
 			method: http.MethodPost,
 			code:   http.StatusServiceUnavailable,
+			remote: "127.0.0.2:1234",
 			claim: &jwt.Claims{
 				Issuer:  "locate",
-				Subject: "127.0.0.2",
+				Subject: subject,
+				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Minute)),
+			},
+			grantErr: address.ErrMaxConcurrent,
+		},
+		{
+			name:   "error-split-host-port-failure",
+			method: http.MethodPost,
+			code:   http.StatusBadRequest,
+			remote: "corrupt-remote-ip",
+			claim: &jwt.Claims{
+				Issuer:  "locate",
+				Subject: subject,
+				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Minute)),
 			},
 			grantErr: address.ErrMaxConcurrent,
 		},
@@ -98,9 +135,11 @@ func Test_envelopeHandler_AllowRequest(t *testing.T) {
 			name:   "error-grant-ip-failure-",
 			method: http.MethodPost,
 			code:   http.StatusInternalServerError,
+			remote: "127.0.0.2:1234",
 			claim: &jwt.Claims{
 				Issuer:  "locate",
-				Subject: "127.0.0.2",
+				Subject: subject,
+				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Minute)),
 			},
 			grantErr: errors.New("generic grant error"),
 		},
@@ -108,26 +147,28 @@ func Test_envelopeHandler_AllowRequest(t *testing.T) {
 			name:   "success",
 			method: http.MethodPost,
 			code:   http.StatusOK,
+			remote: "127.0.0.2:1234",
 			claim: &jwt.Claims{
 				Issuer:  "locate",
-				Subject: "127.0.0.2",
+				Subject: subject,
+				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Second)),
 			},
 		},
 	}
 	for _, tt := range tests {
-		//
-		removeAfter = time.Millisecond
 		t.Run(tt.name, func(t *testing.T) {
 			rw := httptest.NewRecorder()
-			req := httptest.NewRequest(tt.method, "/v0/allow"+tt.param, nil)
+			req := httptest.NewRequest(tt.method, "/v0/envelope/access"+tt.param, nil)
 			env := &envelopeHandler{
 				manager: &fakeManager{
 					grantErr: tt.grantErr,
 				},
+				subject: "envelope",
 			}
 			if tt.claim != nil {
 				req = req.Clone(controller.SetClaim(req.Context(), tt.claim))
 			}
+			req.RemoteAddr = tt.remote
 			env.AllowRequest(rw, req)
 
 			if tt.code != rw.Code {
@@ -155,13 +196,13 @@ func Test_customFormat(t *testing.T) {
 				URL: url.URL{
 					Scheme:   "https",
 					Host:     "localhost",
-					Path:     "/v0/allow",
+					Path:     "/v0/envelope/access",
 					RawQuery: "?this-will-be-removed",
 				},
 				StatusCode: http.StatusOK,
 				Size:       321,
 			},
-			want: "127.0.0.1:1234 2019-01-02T12:30:45Z HTTP/1.1 POST https://localhost/v0/allow 200 321\n",
+			want: "127.0.0.1:1234 2019-01-02T12:30:45Z HTTP/1.1 POST https://localhost/v0/envelope/access 200 321\n",
 		},
 	}
 	for _, tt := range tests {

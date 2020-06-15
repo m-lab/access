@@ -43,6 +43,7 @@ func Test_main(t *testing.T) {
 	// Update path to use fake version of iptables.
 	os.Setenv("PATH", "./testdata/:"+os.Getenv("PATH"))
 	os.Setenv("IPTABLES_EXIT", "0")
+	os.Setenv("IPTABLES_SAVE_EXIT", "0")
 
 	// Simulate unencrypted server.
 	listenAddr = ":0"

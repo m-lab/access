@@ -96,6 +96,7 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 		return
 	}
 
+	// Tests may run (possibly repeatedly) until the claim expires.
 	deadline := cl.Expiry.Time()
 	if deadline.Before(time.Now()) {
 		logx.Debug.Println("already past expiration")

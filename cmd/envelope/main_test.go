@@ -40,6 +40,9 @@ func Test_main(t *testing.T) {
 	defer os.Remove(f.Name())
 	verifyKey = flagx.FileBytesArray{}
 	verifyKey.Set(f.Name())
+	// Update path to use fake version of iptables.
+	os.Setenv("PATH", "./testdata/:"+os.Getenv("PATH"))
+	os.Setenv("IPTABLES_EXIT", "0")
 
 	// Simulate unencrypted server.
 	listenAddr = ":0"

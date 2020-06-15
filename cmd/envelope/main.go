@@ -33,6 +33,7 @@ var (
 	machine       string
 	requireTokens bool
 	subject       string
+	manageDevice  string
 )
 
 func init() {
@@ -44,6 +45,7 @@ func init() {
 	flag.BoolVar(&requireTokens, "envelope.token-required", true, "Require access token in requests")
 	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")
 	flag.StringVar(&subject, "envelope.subject", "", "The subject (service name) expected in access token claims")
+	flag.StringVar(&manageDevice, "envelope.device", "eth0", "The public network interface device name that the envelope manages")
 
 }
 
@@ -137,9 +139,9 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 }
 
 var mainCtx, mainCancel = context.WithCancel(context.Background())
-var getEnvelopeHandler = func(subject string) envelopeHandler {
+var getEnvelopeHandler = func(subject string, mgr *address.IPManager) envelopeHandler {
 	return envelopeHandler{
-		manager: address.NewIPManager(maxIPs),
+		manager: mgr,
 		subject: subject,
 	}
 }
@@ -155,7 +157,8 @@ func main() {
 	verify, err := token.NewVerifier(verifyKey.Get()...)
 	rtx.Must(err, "Failed to create token verifier")
 
-	env := getEnvelopeHandler(subject)
+	mgr := address.NewIPManager(maxIPs)
+	env := getEnvelopeHandler(subject, mgr)
 	ctl, _ := controller.Setup(mainCtx, verify, requireTokens, machine)
 	// Handle all requests using the alice http handler chaining library.
 	// Start with request logging.
@@ -166,6 +169,13 @@ func main() {
 		Addr:    listenAddr,
 		Handler: ac.Then(mux),
 	}
+	err = mgr.Start("8880", manageDevice)
+	rtx.Must(err, "failed to setup iptables management of %q", manageDevice)
+	defer mgr.Stop()
+
+	// TODO: make an option or support dual stack.
+	httpx.DefaultTCPNetwork = "tcp4"
+
 	if certFile != "" && keyFile != "" {
 		log.Println("Listening for secure access requests on " + listenAddr)
 		rtx.Must(httpx.ListenAndServeTLSAsync(srv, certFile, keyFile), "Could not start envelop server")

@@ -34,6 +34,10 @@ var (
 	requireTokens bool
 	subject       string
 	manageDevice  string
+	tcpNetwork    = flagx.Enum{
+		Options: []string{"tcp", "tcp4", "tcp6"},
+		Value:   "tcp",
+	}
 )
 
 func init() {
@@ -46,6 +50,7 @@ func init() {
 	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")
 	flag.StringVar(&subject, "envelope.subject", "", "The subject (service name) expected in access token claims")
 	flag.StringVar(&manageDevice, "envelope.device", "eth0", "The public network interface device name that the envelope manages")
+	flag.Var(&tcpNetwork, "envelope.network", "Listen with this TCP network stack, i.e. tcp, tcp4, tcp6")
 
 }
 
@@ -169,13 +174,13 @@ func main() {
 		Addr:    listenAddr,
 		Handler: ac.Then(mux),
 	}
-	err = mgr.Start("8880", manageDevice)
+	_, port, err := net.SplitHostPort(listenAddr)
+	rtx.Must(err, "failed to split listen address: %q", listenAddr)
+	err = mgr.Start(port, manageDevice)
 	rtx.Must(err, "failed to setup iptables management of %q", manageDevice)
 	defer mgr.Stop()
 
-	// TODO: make an option or support dual stack.
-	httpx.DefaultTCPNetwork = "tcp4"
-
+	httpx.DefaultTCPNetwork = tcpNetwork.Value
 	if certFile != "" && keyFile != "" {
 		log.Println("Listening for secure access requests on " + listenAddr)
 		rtx.Must(httpx.ListenAndServeTLSAsync(srv, certFile, keyFile), "Could not start envelop server")

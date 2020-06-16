@@ -2,6 +2,7 @@ package address
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 
 	"github.com/m-lab/go/rtx"
@@ -65,16 +66,16 @@ func (r *IPManager) Start(port, device string) error {
 }
 
 // Stop restores the iptables rules originally found before running Start().
-func (r *IPManager) Stop() error {
+func (r *IPManager) Stop() ([]byte, error) {
 	if r.origRules == nil {
-		return nil
+		return nil, fmt.Errorf("cannot restore uninitialized rules")
 	}
 	b := bytes.NewBuffer(r.origRules)
-	restore := pipe.Script("Restorin original iptables rules",
+	restore := pipe.Script("Restoring original iptables rules",
 		pipe.Read(b),
 		pipe.Exec("iptables-restore"),
 	)
-	return pipe.Run(restore)
+	return pipe.Output(restore)
 }
 
 func allowedInterfaces(name string) []pipe.Pipe {

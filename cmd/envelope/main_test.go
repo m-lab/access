@@ -31,6 +31,7 @@ func init() {
 }
 
 func Test_main(t *testing.T) {
+	// Update path to use fake version of iptables.
 	defer osx.MustSetenv("PATH", "../../address/testdata:"+os.Getenv("PATH"))()
 
 	// Load fake public verify key.
@@ -43,8 +44,6 @@ func Test_main(t *testing.T) {
 	defer os.Remove(f.Name())
 	verifyKey = flagx.FileBytesArray{}
 	verifyKey.Set(f.Name())
-	// Update path to use fake version of iptables.
-
 	defer osx.MustSetenv("IPTABLES_EXIT", "0")()
 	defer osx.MustSetenv("IPTABLES_SAVE_EXIT", "0")()
 

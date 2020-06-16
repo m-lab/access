@@ -20,6 +20,7 @@ import (
 	"github.com/m-lab/access/address"
 	"github.com/m-lab/access/controller"
 	"github.com/m-lab/go/flagx"
+	"github.com/m-lab/go/osx"
 	"github.com/m-lab/go/prometheusx"
 	"github.com/m-lab/go/rtx"
 )
@@ -30,6 +31,8 @@ func init() {
 }
 
 func Test_main(t *testing.T) {
+	defer osx.MustSetenv("PATH", "../../address/testdata:"+os.Getenv("PATH"))()
+
 	// Load fake public verify key.
 	insecurePublicTestKey := []byte(`{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
 		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`)
@@ -41,9 +44,9 @@ func Test_main(t *testing.T) {
 	verifyKey = flagx.FileBytesArray{}
 	verifyKey.Set(f.Name())
 	// Update path to use fake version of iptables.
-	os.Setenv("PATH", "./testdata/:"+os.Getenv("PATH"))
-	os.Setenv("IPTABLES_EXIT", "0")
-	os.Setenv("IPTABLES_SAVE_EXIT", "0")
+
+	defer osx.MustSetenv("IPTABLES_EXIT", "0")()
+	defer osx.MustSetenv("IPTABLES_SAVE_EXIT", "0")()
 
 	// Simulate unencrypted server.
 	listenAddr = ":0"

@@ -180,7 +180,8 @@ func main() {
 	rtx.Must(err, "failed to setup iptables management of %q", manageDevice)
 	defer mgr.Stop()
 
-	httpx.DefaultTCPNetwork = tcpNetwork.Value
+	// TODO(https://github.com/m-lab/go/pull/123)
+	// httpx.DefaultTCPNetwork = tcpNetwork.Value
 	if certFile != "" && keyFile != "" {
 		log.Println("Listening for secure access requests on " + listenAddr)
 		rtx.Must(httpx.ListenAndServeTLSAsync(srv, certFile, keyFile), "Could not start envelop server")

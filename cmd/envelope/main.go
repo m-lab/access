@@ -50,6 +50,7 @@ func init() {
 	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")
 	flag.StringVar(&subject, "envelope.subject", "", "The subject (service name) expected in access token claims")
 	flag.StringVar(&manageDevice, "envelope.device", "eth0", "The public network interface device name that the envelope manages")
+	flagx.EnableAdvancedFlags() // Enable access to -httpx.tcp-network
 }
 
 type manager interface {
@@ -150,7 +151,6 @@ var getEnvelopeHandler = func(subject string, mgr *address.IPManager) envelopeHa
 }
 
 func main() {
-	flagx.EnableAdvancedFlags() // Enable access to -httpx.tcp-network
 	flag.Parse()
 	log.SetFlags(log.LUTC | log.Lshortfile | log.LstdFlags)
 	rtx.Must(flagx.ArgsFromEnv(flag.CommandLine), "Could not parse env args")

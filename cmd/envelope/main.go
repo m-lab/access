@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	verifyKey     = flagx.FileBytesArray{}
+	verifyKeys    = flagx.FileBytesArray{}
 	listenAddr    string
 	maxIPs        int64
 	certFile      string
@@ -45,13 +45,11 @@ func init() {
 	flag.Int64Var(&maxIPs, "envelope.max-clients", 1, "Maximum number of concurrent client IPs allowed")
 	flag.StringVar(&keyFile, "envelope.cert", "", "TLS certificate for envelope server")
 	flag.StringVar(&certFile, "envelope.key", "", "TLS key for envelope server")
-	flag.Var(&verifyKey, "envelope.verify-key", "Public key(s) for verifying access tokens")
+	flag.Var(&verifyKeys, "envelope.verify-key", "Public key(s) for verifying access tokens")
 	flag.BoolVar(&requireTokens, "envelope.token-required", true, "Require access token in requests")
 	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")
 	flag.StringVar(&subject, "envelope.subject", "", "The subject (service name) expected in access token claims")
 	flag.StringVar(&manageDevice, "envelope.device", "eth0", "The public network interface device name that the envelope manages")
-	flag.Var(&tcpNetwork, "envelope.network", "Listen with this TCP network stack, i.e. tcp, tcp4, tcp6")
-
 }
 
 type manager interface {
@@ -152,6 +150,7 @@ var getEnvelopeHandler = func(subject string, mgr *address.IPManager) envelopeHa
 }
 
 func main() {
+	flagx.EnableAdvancedFlags() // Enable access to -httpx.tcp-network
 	flag.Parse()
 	log.SetFlags(log.LUTC | log.Lshortfile | log.LstdFlags)
 	rtx.Must(flagx.ArgsFromEnv(flag.CommandLine), "Could not parse env args")
@@ -159,7 +158,7 @@ func main() {
 	prom := prometheusx.MustServeMetrics()
 	defer prom.Close()
 
-	verify, err := token.NewVerifier(verifyKey.Get()...)
+	verify, err := token.NewVerifier(verifyKeys.Get()...)
 	rtx.Must(err, "Failed to create token verifier")
 
 	mgr := address.NewIPManager(maxIPs)
@@ -180,8 +179,6 @@ func main() {
 	rtx.Must(err, "failed to setup iptables management of %q", manageDevice)
 	defer mgr.Stop()
 
-	// TODO(https://github.com/m-lab/go/pull/123)
-	// httpx.DefaultTCPNetwork = tcpNetwork.Value
 	if certFile != "" && keyFile != "" {
 		log.Println("Listening for secure access requests on " + listenAddr)
 		rtx.Must(httpx.ListenAndServeTLSAsync(srv, certFile, keyFile), "Could not start envelop server")

@@ -46,9 +46,15 @@ func (r *IPManager) Start(port, device string) error {
 
 	afterCommands := []pipe.Pipe{
 		// Accept incoming connections to the envelope service HTTP(S) server.
-		pipe.Exec("iptables", "--append=INPUT", "--protocol=tcp", "--dport="+port, "--jump=ACCEPT"),                    // Envelope service.
-		pipe.Exec("iptables", "--append=INPUT", "--protocol=udp", "--dport=53", "--jump=ACCEPT"),                       // DNS
-		pipe.Exec("iptables", "--append=INPUT", "--match=conntrack", "--ctstate=ESTABLISHED,RELATED", "--jump=ACCEPT"), // Established connections.
+		pipe.Exec("iptables",
+			// Envelop service itself.
+			"--append=INPUT", "--protocol=tcp", "--dport="+port, "--jump=ACCEPT"),
+		pipe.Exec("iptables",
+			// DNS
+			"--append=INPUT", "--protocol=udp", "--dport=53", "--jump=ACCEPT"),
+		pipe.Exec("iptables",
+			// Established connections.
+			"--append=INPUT", "--match=conntrack", "--ctstate=ESTABLISHED,RELATED", "--jump=ACCEPT"),
 
 		// The last rule "rejects" packets, to send clients a signal that their
 		// connection was refused rather than silently dropped.

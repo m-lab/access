@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"flag"
 	"io/ioutil"
 	"log"
 	"net"
@@ -55,12 +54,6 @@ func Test_main(t *testing.T) {
 	main()
 
 	// Simulate tls server.
-	//
-	// Because flagx.EnableAdvancedFlags adds flags to flag.CommandLine and
-	// adding the same flag names is an error, we must recreate a default flag
-	// set and remove the test flags by resetting os.Args.
-	os.Args = os.Args[:1]
-	flag.CommandLine = flag.NewFlagSet("command-line", flag.ExitOnError)
 	mainCtx, mainCancel = context.WithCancel(context.Background())
 	certFile = "testdata/insecure-cert.pem"
 	keyFile = "testdata/insecure-key.pem"

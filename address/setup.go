@@ -9,12 +9,12 @@ import (
 	"gopkg.in/m-lab/pipe.v3"
 )
 
-// Start initializes iptables rules for managing device, while the envelope
-// service runs on the given port.
+// Start initializes iptables with rules for managing device, while the envelope
+// service runs on port.
 //
-// Current iptables rules are saved, removed and replaced by rules fully managed
-// by the IPManager. To restore the original iptables rules, call Stop() during
-// shutdown.
+// Current iptables rules are saved, removed, and replaced by rules fully
+// managed by the IPManager. To restore the original iptables rules, call Stop()
+// during shutdown.
 func (r *IPManager) Start(port, device string) error {
 	// TODO: support ip6tables also.
 
@@ -63,12 +63,9 @@ func (r *IPManager) Start(port, device string) error {
 
 	commands := append(startCommands, afterCommands...)
 	err = pipe.Run(
-		//out, errs, err := pipe.DividedOutput(
 		pipe.Script("Setup iptables for managing access: "+device, commands...),
 	)
-	// fmt.Println(string(out), string(errs))
 	return err
-	// return pipe.Run(
 }
 
 // Stop restores the iptables rules originally found before running Start().

@@ -32,7 +32,7 @@ func init() {
 }
 
 func Test_main(t *testing.T) {
-	// Update path to use fake version of iptables.
+	// Update flags to use fake version of iptables.
 	flag.Set("address.iptables", "../../address/testdata/iptables")
 	flag.Set("address.iptables-save", "../../address/testdata/iptables-save")
 	flag.Set("address.iptables-restore", "../../address/testdata/iptables-restore")

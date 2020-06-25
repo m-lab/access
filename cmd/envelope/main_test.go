@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"io/ioutil"
 	"log"
 	"net"
@@ -32,7 +33,9 @@ func init() {
 
 func Test_main(t *testing.T) {
 	// Update path to use fake version of iptables.
-	defer osx.MustSetenv("PATH", "../../address/testdata:"+os.Getenv("PATH"))()
+	flag.Set("address.iptables", "../../address/testdata/iptables")
+	flag.Set("address.iptables-save", "../../address/testdata/iptables-save")
+	flag.Set("address.iptables-restore", "../../address/testdata/iptables-restore")
 
 	// Load fake public verify key.
 	insecurePublicTestKey := []byte(`{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +

@@ -20,9 +20,12 @@ func init() {
 	// NOTE: because ip6tables is flag-compatible with iptables, these flags
 	// support either ipv4 or ipv6 exclusively.
 	// TODO: support both ipv4 and ip6tables.
-	flag.StringVar(&iptables, "address.iptables", "/sbin/iptables", "The absolute path to the iptables command")
-	flag.StringVar(&iptablesSave, "address.iptables-save", "/sbin/iptables-save", "The absolute path to the iptables-save command")
-	flag.StringVar(&iptablesRestore, "address.iptables-restore", "/sbin/iptables-restore", "The absolute path to the iptables-restore command")
+	flag.StringVar(&iptables, "address.iptables", "/sbin/iptables",
+		"The absolute path to the iptables command")
+	flag.StringVar(&iptablesSave, "address.iptables-save", "/sbin/iptables-save",
+		"The absolute path to the iptables-save command")
+	flag.StringVar(&iptablesRestore, "address.iptables-restore", "/sbin/iptables-restore",
+		"The absolute path to the iptables-restore command")
 }
 
 // Start initializes iptables with rules for managing device, while the envelope

@@ -1,14 +1,14 @@
 package address
 
 import (
-	"os"
 	"testing"
 
 	"github.com/m-lab/go/osx"
 )
 
 func TestIPManager_Start(t *testing.T) {
-	defer osx.MustSetenv("PATH", "./testdata:"+os.Getenv("PATH"))()
+	iptables = "./testdata/iptables"
+	iptablesSave = "./testdata/iptables-save"
 
 	tests := []struct {
 		name             string
@@ -42,7 +42,7 @@ func TestIPManager_Start(t *testing.T) {
 }
 
 func TestIPManager_Stop(t *testing.T) {
-	defer osx.MustSetenv("PATH", "./testdata:"+os.Getenv("PATH"))()
+	iptablesRestore = "./testdata/iptables-restore"
 
 	tests := []struct {
 		name        string

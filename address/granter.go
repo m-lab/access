@@ -71,7 +71,7 @@ func ipTable(command string, ip net.IP) pipe.Pipe {
 
 func cmdForIP(ip net.IP) (string, string) {
 	if ip.To4() != nil {
-		return "iptables", "/24"
+		return iptables, "/24"
 	}
-	return "ip6tables", "/64"
+	return iptables, "/64"
 }

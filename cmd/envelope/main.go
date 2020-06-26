@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	verifyKey     = flagx.FileBytesArray{}
+	verifyKeys    = flagx.FileBytesArray{}
 	listenAddr    string
 	maxIPs        int64
 	certFile      string
@@ -33,6 +33,11 @@ var (
 	machine       string
 	requireTokens bool
 	subject       string
+	manageDevice  string
+	tcpNetwork    = flagx.Enum{
+		Options: []string{"tcp", "tcp4", "tcp6"},
+		Value:   "tcp",
+	}
 )
 
 func init() {
@@ -40,11 +45,12 @@ func init() {
 	flag.Int64Var(&maxIPs, "envelope.max-clients", 1, "Maximum number of concurrent client IPs allowed")
 	flag.StringVar(&keyFile, "envelope.cert", "", "TLS certificate for envelope server")
 	flag.StringVar(&certFile, "envelope.key", "", "TLS key for envelope server")
-	flag.Var(&verifyKey, "envelope.verify-key", "Public key(s) for verifying access tokens")
+	flag.Var(&verifyKeys, "envelope.verify-key", "Public key(s) for verifying access tokens")
 	flag.BoolVar(&requireTokens, "envelope.token-required", true, "Require access token in requests")
 	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")
 	flag.StringVar(&subject, "envelope.subject", "", "The subject (service name) expected in access token claims")
-
+	flag.StringVar(&manageDevice, "envelope.device", "eth0", "The public network interface device name that the envelope manages")
+	flagx.EnableAdvancedFlags() // Enable access to -httpx.tcp-network
 }
 
 type manager interface {
@@ -137,9 +143,9 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 }
 
 var mainCtx, mainCancel = context.WithCancel(context.Background())
-var getEnvelopeHandler = func(subject string) envelopeHandler {
+var getEnvelopeHandler = func(subject string, mgr *address.IPManager) envelopeHandler {
 	return envelopeHandler{
-		manager: address.NewIPManager(maxIPs),
+		manager: mgr,
 		subject: subject,
 	}
 }
@@ -152,10 +158,11 @@ func main() {
 	prom := prometheusx.MustServeMetrics()
 	defer prom.Close()
 
-	verify, err := token.NewVerifier(verifyKey.Get()...)
+	verify, err := token.NewVerifier(verifyKeys.Get()...)
 	rtx.Must(err, "Failed to create token verifier")
 
-	env := getEnvelopeHandler(subject)
+	mgr := address.NewIPManager(maxIPs)
+	env := getEnvelopeHandler(subject, mgr)
 	ctl, _ := controller.Setup(mainCtx, verify, requireTokens, machine)
 	// Handle all requests using the alice http handler chaining library.
 	// Start with request logging.
@@ -166,6 +173,12 @@ func main() {
 		Addr:    listenAddr,
 		Handler: ac.Then(mux),
 	}
+	_, port, err := net.SplitHostPort(listenAddr)
+	rtx.Must(err, "failed to split listen address: %q", listenAddr)
+	err = mgr.Start(port, manageDevice)
+	rtx.Must(err, "failed to setup iptables management of %q", manageDevice)
+	defer mgr.Stop()
+
 	if certFile != "" && keyFile != "" {
 		log.Println("Listening for secure access requests on " + listenAddr)
 		rtx.Must(httpx.ListenAndServeTLSAsync(srv, certFile, keyFile), "Could not start envelop server")

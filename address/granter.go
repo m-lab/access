@@ -15,6 +15,7 @@ import (
 // IPManager supports granting IP subnet access using iptables or ip6tables.
 type IPManager struct {
 	*semaphore.Weighted
+	origRules []byte
 }
 
 // ErrMaxConcurrent is returned when the max concurrent grants has already been reached.
@@ -70,7 +71,7 @@ func ipTable(command string, ip net.IP) pipe.Pipe {
 
 func cmdForIP(ip net.IP) (string, string) {
 	if ip.To4() != nil {
-		return "iptables", "/24"
+		return iptables, "/24"
 	}
-	return "ip6tables", "/64"
+	return iptables, "/64"
 }

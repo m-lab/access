@@ -1,2 +1,3 @@
 #!/bin/bash
-exit ${EXIT:-0}
+
+exit ${IPTABLES_EXIT:-1}

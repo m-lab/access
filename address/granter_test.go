@@ -2,7 +2,6 @@ package address
 
 import (
 	"net"
-	"os"
 	"sync"
 	"testing"
 
@@ -11,12 +10,6 @@ import (
 )
 
 func TestIPManager_Grant(t *testing.T) {
-	cwd, err := os.Getwd()
-	rtx.Must(err, "Failed to get cwd")
-	// Update PATH to prefer fake versions of iptables and ip6tables commands.
-	resetPath := osx.MustSetenv("PATH", cwd+"/testdata:"+os.Getenv("PATH"))
-	defer resetPath()
-
 	tests := []struct {
 		name          string
 		max           int64
@@ -27,14 +20,18 @@ func TestIPManager_Grant(t *testing.T) {
 		wantRevokeErr bool
 	}{
 		{
-			name: "success-ipv4",
-			max:  1,
-			ip:   net.ParseIP("127.0.0.1"),
+			name:       "success-ipv4",
+			max:        1,
+			ip:         net.ParseIP("127.0.0.1"),
+			grantExit:  "0",
+			revokeExit: "0",
 		},
 		{
-			name: "success-ipv6",
-			max:  1,
-			ip:   net.ParseIP("2002::1"),
+			name:       "success-ipv6",
+			max:        1,
+			ip:         net.ParseIP("2002::1"),
+			grantExit:  "0",
+			revokeExit: "0",
 		},
 		{
 			name:         "error-max-concurent",
@@ -53,6 +50,7 @@ func TestIPManager_Grant(t *testing.T) {
 			name:          "error-revoke",
 			max:           1,
 			ip:            net.ParseIP("127.0.0.1"),
+			grantExit:     "0",
 			revokeExit:    "1", // Make iptables exit with error during revoke.
 			wantRevokeErr: true,
 		},
@@ -60,8 +58,13 @@ func TestIPManager_Grant(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// NOTE: the fake iptables commands read and exit using the EXIT environment.
-			resetExit := osx.MustSetenv("EXIT", tt.grantExit)
-			defer resetExit()
+			defer osx.MustSetenv("IPTABLES_EXIT", tt.grantExit)()
+
+			if tt.ip.To4() != nil {
+				iptables = "./testdata/iptables"
+			} else {
+				iptables = "./testdata/ip6tables"
+			}
 
 			r := NewIPManager(tt.max)
 			if err := r.Grant(tt.ip); (err != nil) != tt.wantGrantErr {
@@ -72,8 +75,7 @@ func TestIPManager_Grant(t *testing.T) {
 				return
 			}
 
-			resetExit = osx.MustSetenv("EXIT", tt.revokeExit)
-			defer resetExit()
+			defer osx.MustSetenv("IPTABLES_EXIT", tt.revokeExit)()
 			if err := r.Revoke(tt.ip); (err != nil) != tt.wantRevokeErr {
 				t.Errorf("IPGranter.Revoke() error = %v, wantErr %v", err, tt.wantRevokeErr)
 			}
@@ -82,12 +84,7 @@ func TestIPManager_Grant(t *testing.T) {
 }
 
 func TestIPManager(t *testing.T) {
-	cwd, err := os.Getwd()
-	rtx.Must(err, "Failed to get cwd")
-	// Update PATH to prefer fake versions of iptables and ip6tables commands.
-	resetPath := osx.MustSetenv("PATH", cwd+"/testdata:"+os.Getenv("PATH"))
-	defer resetPath()
-
+	iptables = "./testdata/iptables"
 	wg := sync.WaitGroup{}
 	mgr := NewIPManager(10)
 	ip := net.ParseIP("127.0.0.2")

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+STDIN=$(</dev/stdin)
+echo -n ${STDIN}
+exit ${IPTABLES_RESTORE_EXIT:-1}

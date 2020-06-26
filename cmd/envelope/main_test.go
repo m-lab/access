@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"io/ioutil"
 	"log"
 	"net"
@@ -20,6 +21,7 @@ import (
 	"github.com/m-lab/access/address"
 	"github.com/m-lab/access/controller"
 	"github.com/m-lab/go/flagx"
+	"github.com/m-lab/go/osx"
 	"github.com/m-lab/go/prometheusx"
 	"github.com/m-lab/go/rtx"
 )
@@ -30,6 +32,11 @@ func init() {
 }
 
 func Test_main(t *testing.T) {
+	// Update flags to use fake version of iptables.
+	flag.Set("address.iptables", "../../address/testdata/iptables")
+	flag.Set("address.iptables-save", "../../address/testdata/iptables-save")
+	flag.Set("address.iptables-restore", "../../address/testdata/iptables-restore")
+
 	// Load fake public verify key.
 	insecurePublicTestKey := []byte(`{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
 		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`)
@@ -38,8 +45,10 @@ func Test_main(t *testing.T) {
 	f.Write(insecurePublicTestKey)
 	f.Close()
 	defer os.Remove(f.Name())
-	verifyKey = flagx.FileBytesArray{}
-	verifyKey.Set(f.Name())
+	verifyKeys = flagx.FileBytesArray{}
+	verifyKeys.Set(f.Name())
+	defer osx.MustSetenv("IPTABLES_EXIT", "0")()
+	defer osx.MustSetenv("IPTABLES_SAVE_EXIT", "0")()
 
 	// Simulate unencrypted server.
 	listenAddr = ":0"

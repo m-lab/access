@@ -115,5 +115,5 @@ curl --no-buffer \
   --header "Sec-WebSocket-Protocol: net.measurementlab.envelope" \
   --header "Sec-WebSocket-Version: 13" \
   --header "Sec-WebSocket-Key: aGVsbG8K" \
-  http://localhost:8880/v0/envelope/access
+    http://localhost:8880/v0/envelope/access
 ```

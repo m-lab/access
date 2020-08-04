@@ -12,6 +12,14 @@ import (
 	"gopkg.in/m-lab/pipe.v3"
 )
 
+// Manager manages access to a device by IP and port.
+type Manager interface {
+	Start(port, device string) error
+	Grant(ip net.IP) error
+	Revoke(ip net.IP) error
+	Stop() ([]byte, error)
+}
+
 // IPManager supports granting IP subnet access using iptables or ip6tables.
 type IPManager struct {
 	*semaphore.Weighted
@@ -74,4 +82,27 @@ func cmdForIP(ip net.IP) (string, string) {
 		return iptables, "/24"
 	}
 	return iptables, "/64"
+}
+
+// NullManager implements the address.Manager interface while doing nothing.
+type NullManager struct{}
+
+// Grant does nothing with the given ip.
+func (r *NullManager) Grant(ip net.IP) error {
+	return nil
+}
+
+// Revoke does nothing with the given ip.
+func (r *NullManager) Revoke(ip net.IP) error {
+	return nil
+}
+
+// Start does nothing to the given port or device.
+func (r *NullManager) Start(port, device string) error {
+	return nil
+}
+
+// Stop does nothing.
+func (r *NullManager) Stop() ([]byte, error) {
+	return nil, nil
 }

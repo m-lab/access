@@ -12,9 +12,12 @@ import (
 	"time"
 
 	"github.com/gorilla/handlers"
+	"github.com/gorilla/websocket"
 	"github.com/justinas/alice"
+	"gopkg.in/square/go-jose.v2/jwt"
 
 	"github.com/m-lab/access/address"
+	"github.com/m-lab/access/chanio"
 	"github.com/m-lab/access/controller"
 	"github.com/m-lab/access/token"
 	"github.com/m-lab/go/flagx"
@@ -83,37 +86,24 @@ func customFormat(w io.Writer, p handlers.LogFormatterParams) {
 
 func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Request) {
 	// AllowRequest is a state-changing POST method.
-	if req.Method != http.MethodPost {
+	if req.Method != http.MethodGet {
 		rw.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	cl := controller.GetClaim(req.Context())
-	if cl == nil {
-		// This could happen if the TokenController is disabled.
-		logx.Debug.Println("missing claim")
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	if cl.Subject != env.subject {
-		logx.Debug.Println("wrong subject claim")
-		rw.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	// Tests may run (possibly repeatedly) until the claim expires.
-	deadline := cl.Expiry.Time()
-	if deadline.Before(time.Now()) {
-		logx.Debug.Println("already past expiration")
-		rw.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	// Use client remote address as the basis of granting temporary subnet access.
 	host, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err != nil {
-		logx.Debug.Println("failed to split remote addr")
+		logx.Debug.Println("failed to split remote addr:", err)
+		rw.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Get deadline based on token claim.
+	cl := controller.GetClaim(req.Context())
+	deadline, err := env.getDeadline(cl)
+	if err != nil {
+		logx.Debug.Println("failed to get deadline:", err)
 		rw.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -131,19 +121,90 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	ctx, cancel := context.WithDeadline(req.Context(), deadline)
-	defer cancel()
-	// Keep the lease until:
-	// * client disconnects.
-	// * timeout expires.
-	// * parent context is cancelled.
-	<-ctx.Done()
+	conn := setupConn(rw, req)
+	if conn == nil {
+		logx.Debug.Println("setup websocket conn failed")
+		rw.WriteHeader(http.StatusInternalServerError)
+		rtx.PanicOnError(env.Revoke(allow), "Failed to remove rule for "+allow.String())
+		return
+	}
+
+	// At this point, we want a few things to happen:
+	// * return from the handler so the client http request can return.
+	// * wait asynchronously on the hijacked conn so the client can
+	//   signal completion by closing the conn.
+	env.wait(req.Context(), conn, deadline)
+
 	// TODO: handle panic.
 	rtx.PanicOnError(env.Revoke(allow), "Failed to remove rule for "+allow.String())
 }
 
+func (env *envelopeHandler) getDeadline(cl *jwt.Claims) (time.Time, error) {
+	if cl == nil && requireTokens {
+		logx.Debug.Println("missing claim")
+		return time.Time{}, fmt.Errorf("missing claim when tokens required")
+	}
+
+	if cl == nil {
+		// This could happen if tokens are not required.
+		return time.Now().Add(time.Minute), nil
+	}
+
+	if cl.Subject != env.subject {
+		logx.Debug.Println("wrong subject claim")
+		return time.Time{}, fmt.Errorf("wrong claim subject")
+	}
+
+	// Tests may run (possibly repeatedly) until the claim expires.
+	deadline := cl.Expiry.Time()
+	if deadline.Before(time.Now()) {
+		logx.Debug.Println("already past expiration")
+		return time.Time{}, fmt.Errorf("already past claim expiration")
+	}
+	return deadline, nil
+}
+
+func setupConn(writer http.ResponseWriter, request *http.Request) *websocket.Conn {
+	headers := http.Header{}
+	headers.Add("Sec-WebSocket-Protocol", "net.measurementlab.envelope")
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			// Allow cross origin resource sharing
+			return true
+		},
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+	}
+	conn, err := upgrader.Upgrade(writer, request, headers)
+	if err != nil {
+		logx.Debug.Println("failed to upgrade", err)
+		return nil
+	}
+	return conn
+}
+
+func (env *envelopeHandler) wait(ctx context.Context, c *websocket.Conn, dl time.Time) {
+	// NOTE: we are explicitly ignoring the error value from SetDeadline to
+	// guarantee that we execute env.Revoke.
+	c.SetReadDeadline(dl)
+	c.SetWriteDeadline(dl)
+	ctxdl, cancel := context.WithDeadline(ctx, dl)
+	defer cancel()
+	// Clean up client connection upon return.
+	defer c.Close()
+
+	// Keep the client connection open and the IP grant enabled until:
+	// * parent context expires.
+	// * context deadline expires.
+	// * client disconnects (or writes data that we don't expect).
+	select {
+	case <-ctxdl.Done():
+	case <-chanio.ReadOnce(c.UnderlyingConn()):
+	}
+}
+
 var mainCtx, mainCancel = context.WithCancel(context.Background())
-var getEnvelopeHandler = func(subject string, mgr *address.IPManager) envelopeHandler {
+var getEnvelopeHandler = func(subject string, mgr address.Manager) envelopeHandler {
 	return envelopeHandler{
 		manager: mgr,
 		subject: subject,
@@ -161,7 +222,12 @@ func main() {
 	verify, err := token.NewVerifier(verifyKeys.Get()...)
 	rtx.Must(err, "Failed to create token verifier")
 
-	mgr := address.NewIPManager(maxIPs)
+	var mgr address.Manager
+	if requireTokens {
+		mgr = address.NewIPManager(maxIPs)
+	} else {
+		mgr = &address.NullManager{}
+	}
 	env := getEnvelopeHandler(subject, mgr)
 	ctl, _ := controller.Setup(mainCtx, verify, requireTokens, machine)
 	// Handle all requests using the alice http handler chaining library.
@@ -172,6 +238,12 @@ func main() {
 	srv := &http.Server{
 		Addr:    listenAddr,
 		Handler: ac.Then(mux),
+
+		// NOTE: prevent connections from staying open indefinitely.
+		// And, these timeouts are reset for individual clients that
+		// negotiate the websocket connection.
+		ReadTimeout:  time.Minute,
+		WriteTimeout: time.Minute,
 	}
 	_, port, err := net.SplitHostPort(listenAddr)
 	rtx.Must(err, "failed to split listen address: %q", listenAddr)

@@ -201,7 +201,7 @@ func Test_envelopeHandler_AllowRequest_Websocket(t *testing.T) {
 			claim: &jwt.Claims{
 				Issuer:  "locate",
 				Subject: subject,
-				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Second)),
+				// Expiry:  set below.
 			},
 		},
 		{
@@ -210,9 +210,9 @@ func Test_envelopeHandler_AllowRequest_Websocket(t *testing.T) {
 			claim: &jwt.Claims{
 				Issuer:  "locate",
 				Subject: subject,
-				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Second)),
+				// Expiry:  set below.
 			},
-			sleep: 2 * time.Second, // 2x as long as the expiration time.
+			sleep: 2 * time.Second, // Force delay to create timeout.
 		},
 	}
 	for _, tt := range tests {
@@ -222,29 +222,31 @@ func Test_envelopeHandler_AllowRequest_Websocket(t *testing.T) {
 				subject: "envelope",
 			}
 			requireTokens = true
-
 			// Create a synthetic token claim handler that adds the unit test
 			// claim to the request context. It is simpler to inject the claim
 			// instead of invoking the PKI needed to sign and verify a real claim.
 			addClaims := func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					// Unconditionally assign the unit test claim to the request context.
+					tt.claim.Expiry = jwt.NewNumericDate(time.Now().Add(time.Second))
 					next.ServeHTTP(w, r.Clone(controller.SetClaim(r.Context(), tt.claim)))
 				})
 			}
-			//
+			// Create a handler chain that adds a claim (above) and then handles the request.
 			ac := alice.New(addClaims).Then(http.HandlerFunc(env.AllowRequest))
-
+			// Setup the fake server.
 			mux := http.NewServeMux()
 			mux.Handle("/v0/envelope/access", ac)
-
 			srv := httptest.NewServer(mux)
 			defer srv.Close()
 
+			// Dial a websocket connection.
 			headers := http.Header{}
 			headers.Add("Sec-WebSocket-Protocol", "net.measurementlab.envelope")
 			c, resp, _ := websocket.DefaultDialer.Dial(
 				strings.Replace(srv.URL, "http", "ws", 1)+"/v0/envelope/access", headers)
+
+			// Check the response code.
 			if tt.code != resp.StatusCode {
 				t.Errorf("AllowRequest() wrong status code; got %d, want %d", resp.StatusCode, tt.code)
 			}

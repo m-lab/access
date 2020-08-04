@@ -192,16 +192,27 @@ func Test_envelopeHandler_AllowRequest_Websocket(t *testing.T) {
 	tests := []struct {
 		name  string
 		code  int
+		sleep time.Duration
 		claim *jwt.Claims
 	}{
 		{
-			name: "success",
+			name: "success-exit-fast",
 			code: http.StatusSwitchingProtocols,
 			claim: &jwt.Claims{
 				Issuer:  "locate",
 				Subject: subject,
 				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Second)),
 			},
+		},
+		{
+			name: "success-wait-for-timeout",
+			code: http.StatusSwitchingProtocols,
+			claim: &jwt.Claims{
+				Issuer:  "locate",
+				Subject: subject,
+				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Second)),
+			},
+			sleep: 2 * time.Second, // 2x as long as the expiration time.
 		},
 	}
 	for _, tt := range tests {
@@ -238,6 +249,7 @@ func Test_envelopeHandler_AllowRequest_Websocket(t *testing.T) {
 				t.Errorf("AllowRequest() wrong status code; got %d, want %d", resp.StatusCode, tt.code)
 			}
 			if c != nil {
+				time.Sleep(tt.sleep)
 				c.Close()
 			}
 		})

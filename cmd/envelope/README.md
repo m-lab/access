@@ -94,3 +94,26 @@ eyJhdWQiOlsibWxhYjEubGdhMDMiXSwiZXhwIjoxNTg0NTAyMjEyLCJpc3MiOiJsb2NhdGUubWVhc3Vy
 nRsYWIubmV0Iiwic3ViIjoiMTI3LjAuMC4yIn0.FZSjjDjWJVGSKzJKJP5Cbaacp8PNqGX5_zETe3SQsXvhlo
 hGlAlKLdhDkjBDIKttXkO3BL5xyQ09cVGfmbelDA
 ```
+
+### Local development without access tokens
+
+Start the access envelope server, without requiring access tokens (and
+without iptables management; by default these are both required).
+
+```sh
+~/bin/envelope -envelope.token-required=false
+```
+
+Connect to the local access envelope using `curl`. When tokens are not
+required, the default timeout is 60s. After this timeout, the server will
+hangup automatically.
+
+```sh
+curl --no-buffer \
+  --header "Connection: Upgrade" \
+  --header "Upgrade: websocket" \
+  --header "Sec-WebSocket-Protocol: net.measurementlab.envelope" \
+  --header "Sec-WebSocket-Version: 13" \
+  --header "Sec-WebSocket-Key: aGVsbG8K" \
+  http://localhost:8880/v0/envelope/access
+```

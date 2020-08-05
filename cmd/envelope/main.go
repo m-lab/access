@@ -85,7 +85,8 @@ func customFormat(w io.Writer, p handlers.LogFormatterParams) {
 }
 
 func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Request) {
-	// AllowRequest is a state-changing POST method.
+	// Websocket requests must be GET. Also note that AllowRequest is a
+	// state-changing operation.
 	if req.Method != http.MethodGet {
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -108,8 +109,8 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	allow := net.ParseIP(host)
-	err = env.Grant(allow)
+	remote := net.ParseIP(host)
+	err = env.Grant(remote)
 	switch {
 	case err == address.ErrMaxConcurrent:
 		logx.Debug.Println("grant limit reached")
@@ -125,18 +126,18 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	if conn == nil {
 		logx.Debug.Println("setup websocket conn failed")
 		rw.WriteHeader(http.StatusInternalServerError)
-		rtx.PanicOnError(env.Revoke(allow), "Failed to remove rule for "+allow.String())
+		// TODO: handle panic.
+		rtx.PanicOnError(env.Revoke(remote), "Failed to remove rule for "+remote.String())
 		return
 	}
 
-	// At this point, we want a few things to happen:
-	// * return from the handler so the client http request can return.
-	// * wait asynchronously on the hijacked conn so the client can
-	//   signal completion by closing the conn.
+	// At this point, we want to wait for either the deadline (when the envelope
+	// service closes the connection) or the client to close the websocket conn
+	// (to signal completion).
 	env.wait(req.Context(), conn, deadline)
 
 	// TODO: handle panic.
-	rtx.PanicOnError(env.Revoke(allow), "Failed to remove rule for "+allow.String())
+	rtx.PanicOnError(env.Revoke(remote), "Failed to remove rule for "+remote.String())
 }
 
 func (env *envelopeHandler) getDeadline(cl *jwt.Claims) (time.Time, error) {

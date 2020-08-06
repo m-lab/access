@@ -12,10 +12,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/handlers"
+	"github.com/gorilla/websocket"
+	"github.com/justinas/alice"
 	"gopkg.in/square/go-jose.v2/jwt"
 
 	"github.com/m-lab/access/address"
@@ -60,6 +63,7 @@ func Test_main(t *testing.T) {
 	mainCtx, mainCancel = context.WithCancel(context.Background())
 	certFile = "testdata/insecure-cert.pem"
 	keyFile = "testdata/insecure-key.pem"
+	requireTokens = false // use NullManager.
 	mainCancel()
 	main()
 }
@@ -75,31 +79,48 @@ func (f *fakeManager) Revoke(ip net.IP) error {
 	return nil
 }
 
-func Test_envelopeHandler_AllowRequest(t *testing.T) {
+// Test_envelopeHandler_AllowRequest_Errors exercises error paths that cannot be
+// reached using the websocket client package directly.
+func Test_envelopeHandler_AllowRequest_Errors(t *testing.T) {
 	subject := "envelope"
 	tests := []struct {
-		name     string
-		param    string
-		method   string
-		remote   string
-		code     int
-		claim    *jwt.Claims
-		grantErr error
+		name            string
+		method          string
+		remote          string
+		code            int
+		allowEmptyClaim bool
+		claim           *jwt.Claims
+		grantErr        error
 	}{
 		{
 			name:   "error-bad-method",
-			method: http.MethodGet,
+			method: http.MethodPost,
 			code:   http.StatusMethodNotAllowed,
 		},
 		{
 			name:   "error-no-claim-found",
-			method: http.MethodPost,
-			code:   http.StatusInternalServerError,
+			method: http.MethodGet,
+			code:   http.StatusBadRequest,
+			remote: "127.0.0.2:1234",
+		},
+		{
+			name:            "error-allow-empty-claim",
+			method:          http.MethodGet,
+			code:            http.StatusBadRequest,
+			allowEmptyClaim: true,
+			remote:          "127.0.0.2:1234",
+		},
+		{
+			name:   "error-remote-host-corrupt",
+			method: http.MethodGet,
+			code:   http.StatusBadRequest,
+			remote: "thisisnotanip-1234",
 		},
 		{
 			name:   "error-claim-subject-is-invalid",
-			method: http.MethodPost,
+			method: http.MethodGet,
 			code:   http.StatusBadRequest,
+			remote: "127.0.0.2:1234",
 			claim: &jwt.Claims{
 				Issuer:  "locate",
 				Subject: "wrong-subject",
@@ -107,7 +128,7 @@ func Test_envelopeHandler_AllowRequest(t *testing.T) {
 		},
 		{
 			name:   "error-claim-is-already-expired",
-			method: http.MethodPost,
+			method: http.MethodGet,
 			code:   http.StatusBadRequest,
 			remote: "127.0.0.2:1234",
 			claim: &jwt.Claims{
@@ -118,7 +139,7 @@ func Test_envelopeHandler_AllowRequest(t *testing.T) {
 		},
 		{
 			name:   "error-grant-ip-failure-max-concurrent",
-			method: http.MethodPost,
+			method: http.MethodGet,
 			code:   http.StatusServiceUnavailable,
 			remote: "127.0.0.2:1234",
 			claim: &jwt.Claims{
@@ -129,20 +150,8 @@ func Test_envelopeHandler_AllowRequest(t *testing.T) {
 			grantErr: address.ErrMaxConcurrent,
 		},
 		{
-			name:   "error-split-host-port-failure",
-			method: http.MethodPost,
-			code:   http.StatusBadRequest,
-			remote: "corrupt-remote-ip",
-			claim: &jwt.Claims{
-				Issuer:  "locate",
-				Subject: subject,
-				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Minute)),
-			},
-			grantErr: address.ErrMaxConcurrent,
-		},
-		{
 			name:   "error-grant-ip-failure-",
-			method: http.MethodPost,
+			method: http.MethodGet,
 			code:   http.StatusInternalServerError,
 			remote: "127.0.0.2:1234",
 			claim: &jwt.Claims{
@@ -152,36 +161,98 @@ func Test_envelopeHandler_AllowRequest(t *testing.T) {
 			},
 			grantErr: errors.New("generic grant error"),
 		},
-		{
-			name:   "success",
-			method: http.MethodPost,
-			code:   http.StatusOK,
-			remote: "127.0.0.2:1234",
-			claim: &jwt.Claims{
-				Issuer:  "locate",
-				Subject: subject,
-				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Second)),
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rw := httptest.NewRecorder()
-			req := httptest.NewRequest(tt.method, "/v0/envelope/access"+tt.param, nil)
+			req := httptest.NewRequest(tt.method, "/v0/envelope/access", nil)
 			env := &envelopeHandler{
 				manager: &fakeManager{
 					grantErr: tt.grantErr,
 				},
 				subject: "envelope",
 			}
+			requireTokens = !tt.allowEmptyClaim
 			if tt.claim != nil {
 				req = req.Clone(controller.SetClaim(req.Context(), tt.claim))
 			}
+
 			req.RemoteAddr = tt.remote
 			env.AllowRequest(rw, req)
 
 			if tt.code != rw.Code {
 				t.Errorf("AllowRequest() wrong status code; got %d, want %d", rw.Code, tt.code)
+			}
+		})
+	}
+}
+
+func Test_envelopeHandler_AllowRequest_Websocket(t *testing.T) {
+	subject := "envelope"
+	tests := []struct {
+		name  string
+		code  int
+		sleep time.Duration
+		claim *jwt.Claims
+	}{
+		{
+			name: "success-exit-fast",
+			code: http.StatusSwitchingProtocols,
+			claim: &jwt.Claims{
+				Issuer:  "locate",
+				Subject: subject,
+				// Expiry:  set below.
+			},
+		},
+		{
+			name: "success-wait-for-timeout",
+			code: http.StatusSwitchingProtocols,
+			claim: &jwt.Claims{
+				Issuer:  "locate",
+				Subject: subject,
+				// Expiry:  set below.
+			},
+			sleep: 2 * time.Second, // Force delay to create timeout.
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := &envelopeHandler{
+				manager: &fakeManager{},
+				subject: "envelope",
+			}
+			requireTokens = true
+			// Create a synthetic token claim handler that adds the unit test
+			// claim to the request context. It is simpler to inject the claim
+			// instead of invoking the PKI needed to sign and verify a real claim.
+			addClaims := func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Unconditionally assign the unit test claim to the request context.
+					tt.claim.Expiry = jwt.NewNumericDate(time.Now().Add(time.Second))
+					next.ServeHTTP(w, r.Clone(controller.SetClaim(r.Context(), tt.claim)))
+				})
+			}
+			// Create a handler chain that adds a claim (above) and then handles the request.
+			ac := alice.New(addClaims).Then(http.HandlerFunc(env.AllowRequest))
+			// Setup the fake server.
+			mux := http.NewServeMux()
+			mux.Handle("/v0/envelope/access", ac)
+			srv := httptest.NewServer(mux)
+			defer srv.Close()
+
+			// Dial a websocket connection.
+			headers := http.Header{}
+			headers.Add("Sec-WebSocket-Protocol", "net.measurementlab.envelope")
+			c, resp, _ := websocket.DefaultDialer.Dial(
+				strings.Replace(srv.URL, "http", "ws", 1)+"/v0/envelope/access", headers)
+
+			// Check the response code.
+			if tt.code != resp.StatusCode {
+				t.Errorf("AllowRequest() wrong status code; got %d, want %d", resp.StatusCode, tt.code)
+			}
+			if c != nil {
+				time.Sleep(tt.sleep)
+				c.Close()
 			}
 		})
 	}

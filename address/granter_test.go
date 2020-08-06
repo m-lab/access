@@ -101,3 +101,22 @@ func TestIPManager(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestNullManager verifies that the NullManager does nothing.
+func TestNullManager(t *testing.T) {
+	t.Run("null-manager", func(t *testing.T) {
+		r := &NullManager{}
+		if err := r.Grant(net.ParseIP("127.0.0.1")); err != nil {
+			t.Errorf("NullManager.Grant() error = %v, want nil", err)
+		}
+		if err := r.Revoke(net.ParseIP("127.0.0.1")); err != nil {
+			t.Errorf("NullManager.Revoke() error = %v, want nil", err)
+		}
+		if err := r.Start("1234", "eth0"); err != nil {
+			t.Errorf("NullManager.Start() error = %v, want nil", err)
+		}
+		if _, err := r.Stop(); err != nil {
+			t.Errorf("NullManager.Stop() error = %v, want nil", err)
+		}
+	})
+}

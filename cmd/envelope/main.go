@@ -185,8 +185,8 @@ func setupConn(writer http.ResponseWriter, request *http.Request) *websocket.Con
 }
 
 func (env *envelopeHandler) wait(ctx context.Context, c *websocket.Conn, dl time.Time) {
-	// NOTE: we are explicitly ignoring the error value from SetDeadline to
-	// guarantee that we execute env.Revoke.
+	// NOTE: we are explicitly ignoring the error value from SetDeadline.
+	// Any error there will show up on read below.
 	c.SetReadDeadline(dl)
 	c.SetWriteDeadline(dl)
 	ctxdl, cancel := context.WithDeadline(ctx, dl)

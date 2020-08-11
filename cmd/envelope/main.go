@@ -46,8 +46,8 @@ var (
 func init() {
 	flag.StringVar(&listenAddr, "envelope.listen-address", ":8880", "Listen address for the envelope access API")
 	flag.Int64Var(&maxIPs, "envelope.max-clients", 1, "Maximum number of concurrent client IPs allowed")
-	flag.StringVar(&keyFile, "envelope.cert", "", "TLS certificate for envelope server")
-	flag.StringVar(&certFile, "envelope.key", "", "TLS key for envelope server")
+	flag.StringVar(&certFile, "envelope.cert", "", "TLS certificate for envelope server")
+	flag.StringVar(&keyFile, "envelope.key", "", "TLS key for envelope server")
 	flag.Var(&verifyKeys, "envelope.verify-key", "Public key(s) for verifying access tokens")
 	flag.BoolVar(&requireTokens, "envelope.token-required", true, "Require access token in requests")
 	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")

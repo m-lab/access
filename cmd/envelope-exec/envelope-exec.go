@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"io/ioutil"
 	"log"
@@ -18,7 +19,6 @@ import (
 	"github.com/m-lab/go/logx"
 	"github.com/m-lab/go/rtx"
 	v2 "github.com/m-lab/locate/api/v2"
-	"github.com/stephen-soltesz/prometheus-support/src/k8s.io/apimachinery/pkg/util/json"
 )
 
 var (

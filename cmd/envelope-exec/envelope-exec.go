@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"io/ioutil"
 	"log"
@@ -22,13 +23,13 @@ import (
 )
 
 var (
-	locate    = flagx.MustNewURL("https://locate-dot-mlab-sandbox.appspot.com/v2/nearest/")
-	privKey   flagx.FileBytes
-	machine   string
-	service   string
-	timeout   time.Duration
-	envKey    string
-	logFatalf = log.Fatalf
+	locate      = flagx.MustNewURL("https://locate-dot-mlab-sandbox.appspot.com/v2/nearest/")
+	privKey     flagx.FileBytes
+	machine     string
+	service     string
+	timeout     time.Duration
+	envelopeKey string
+	logFatalf   = log.Fatalf
 )
 
 func init() {
@@ -39,7 +40,7 @@ func setupFlags() {
 	flag.Var(&locate, "locate-url", "URL Prefix for locate service")
 	flag.StringVar(&service, "service", "wehe/replay", "<name>/<datatype> to request")
 	flag.DurationVar(&timeout, "timeout", 60*time.Second, "Complete request and command execution within timeout")
-	flag.StringVar(&envKey, "env-key", "wss:///v0/envelope/access", "The key name to extract from the result URLs")
+	flag.StringVar(&envelopeKey, "envelope-key", "wss://:4443/v0/envelope/access", "The key name to extract from the result URLs")
 }
 
 func mustRunCommandAsync(ctx context.Context, args []string, extraEnv []string) context.Context {
@@ -96,12 +97,42 @@ func main() {
 		log.Fatalf("Request failed: %#v", result.Error)
 	}
 
-	// For each result returned
-	for _, target := range result.Results {
-		rawurl := target.URLs[envKey]
-		access, err := url.Parse(rawurl)
-		rtx.Must(err, "Failed to parse URL using key %s: %#v", envKey, target.URLs)
+	// Attempt to open a connection to one of the envelope result URLs.
+	conn, access, err := openWebsocket(ctx, &result)
+	rtx.Must(err, "Failed to open websocket connection to results: %#v", result)
+	defer conn.Close()
 
+	// Prepare variables to inject into the command's environment.
+	env := []string{
+		"SERVICE_HOSTNAME=" + access.Hostname(),
+		"SERVICE_URL=" + access.String(),
+	}
+
+	// The connection to the envelope is open. Commands are run
+	// asynchronously. Commands get one chance to complete successfully.
+	// Commands that exit with an error cause this process to exit early.
+	ctx2 := mustRunCommandAsync(ctx, flag.Args(), env)
+
+	// Wait for either the command context to expire (after command exits,
+	// or runtime timeout expires), or the envelope connection to close
+	// (envelope timeout).
+	select {
+	case <-ctx2.Done():
+		return
+	case <-chanio.ReadOnce(conn.UnderlyingConn()):
+		return
+	}
+}
+
+func openWebsocket(ctx context.Context, result *v2.QueryResult) (*websocket.Conn, *url.URL, error) {
+	// Try each result until a connection to the envelope service succeeds.
+	// Then, run the user-provided command once.
+	for _, target := range result.Results {
+		rawurl := target.URLs[envelopeKey]
+		access, err := url.Parse(rawurl)
+		if err != nil {
+			return nil, nil, err
+		}
 		// Open websocket.
 		logx.Debug.Println("Issue request to:", access.Hostname())
 		headers := http.Header{}
@@ -110,27 +141,10 @@ func main() {
 		conn, _, err := websocket.DefaultDialer.DialContext(ctx, access.String(), headers)
 		if err != nil {
 			// It's okay for one machine to reject the connection.
+			// The for loop keeps trying the available results until one succeeds.
 			continue
 		}
-		rc := conn.UnderlyingConn()
-		defer rc.Close()
-
-		// Prepare variables to inject into the command's environment.
-		env := []string{
-			"SERVICE_HOSTNAME=" + access.Hostname(),
-			"SERVICE_URL=" + access.String(),
-		}
-
-		// The connection to the envelope is open; Commands only get one chance
-		// to complete successfully. commands that exit with an error cause this
-		// process to exit early.
-		ctx2 := mustRunCommandAsync(ctx, flag.Args(), env)
-
-		select {
-		case <-ctx2.Done():
-			return
-		case <-chanio.ReadOnce(rc):
-			return
-		}
+		return conn, access, nil
 	}
+	return nil, nil, errors.New("Failed to open websocket conn from all results")
 }

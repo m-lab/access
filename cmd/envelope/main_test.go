@@ -39,6 +39,9 @@ func Test_main(t *testing.T) {
 	flag.Set("address.iptables", "../../address/testdata/iptables")
 	flag.Set("address.iptables-save", "../../address/testdata/iptables-save")
 	flag.Set("address.iptables-restore", "../../address/testdata/iptables-restore")
+	flag.Set("address.ip6tables", "../../address/testdata/ip6tables")
+	flag.Set("address.ip6tables-save", "../../address/testdata/ip6tables-save")
+	flag.Set("address.ip6tables-restore", "../../address/testdata/iptables-restore")
 
 	// Load fake public verify key.
 	insecurePublicTestKey := []byte(`{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
@@ -51,7 +54,9 @@ func Test_main(t *testing.T) {
 	verifyKeys = flagx.FileBytesArray{}
 	verifyKeys.Set(f.Name())
 	defer osx.MustSetenv("IPTABLES_EXIT", "0")()
+	defer osx.MustSetenv("IP6TABLES_EXIT", "0")()
 	defer osx.MustSetenv("IPTABLES_SAVE_EXIT", "0")()
+	defer osx.MustSetenv("IP6TABLES_SAVE_EXIT", "0")()
 
 	// Simulate unencrypted server.
 	listenAddr = ":0"

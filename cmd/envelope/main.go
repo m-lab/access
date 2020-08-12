@@ -168,7 +168,8 @@ func (env *envelopeHandler) getDeadline(cl *jwt.Claims) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("already past claim expiration")
 	}
 
-	// Give the service enough time to run by choosing the later deadline.
+	// If the token deadline is even earlier than the minDeadline, reset to the
+	// later time.
 	if deadline.Before(minDeadline) {
 		deadline = minDeadline
 	}

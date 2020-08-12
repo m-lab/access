@@ -11,20 +11,29 @@ import (
 )
 
 var (
-	iptables        string
-	iptablesSave    string
-	iptablesRestore string
+	ip4tables        string
+	ip4tablesSave    string
+	ip4tablesRestore string
+
+	ip6tables        string
+	ip6tablesSave    string
+	ip6tablesRestore string
 )
 
 func init() {
-	// NOTE: because ip6tables is flag-compatible with iptables, these flags
-	// support either ipv4 or ipv6 exclusively.
-	// TODO: support both ipv4 and ip6tables.
-	flag.StringVar(&iptables, "address.iptables", "/sbin/iptables",
+	// NOTE: because ip6tables is flag-compatible with iptables.
+	flag.StringVar(&ip4tables, "address.iptables", "/sbin/iptables",
 		"The absolute path to the iptables command")
-	flag.StringVar(&iptablesSave, "address.iptables-save", "/sbin/iptables-save",
+	flag.StringVar(&ip4tablesSave, "address.iptables-save", "/sbin/iptables-save",
 		"The absolute path to the iptables-save command")
-	flag.StringVar(&iptablesRestore, "address.iptables-restore", "/sbin/iptables-restore",
+	flag.StringVar(&ip4tablesRestore, "address.iptables-restore", "/sbin/iptables-restore",
+		"The absolute path to the iptables-restore command")
+
+	flag.StringVar(&ip6tables, "address.ip6tables", "/sbin/ip6tables",
+		"The absolute path to the iptables command")
+	flag.StringVar(&ip6tablesSave, "address.ip6tables-save", "/sbin/ip6tables-save",
+		"The absolute path to the iptables-save command")
+	flag.StringVar(&ip6tablesRestore, "address.ip6tables-restore", "/sbin/ip6tables-restore",
 		"The absolute path to the iptables-restore command")
 }
 
@@ -36,11 +45,23 @@ func init() {
 // during shutdown.
 func (r *IPManager) Start(port, device string) error {
 	// Save original rules.
-	origRules, err := pipe.Output(pipe.Exec(iptablesSave))
+	var err error
+	r.origRules4, err = start(ip4tablesSave, ip4tables, port, device)
 	if err != nil {
 		return err
 	}
-	r.origRules = origRules
+	r.origRules6, err = start(ip6tablesSave, ip6tables, port, device)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func start(iptablesSave, iptables, port, device string) ([]byte, error) {
+	origRules, err := pipe.Output(pipe.Exec(iptablesSave))
+	if err != nil {
+		return nil, err
+	}
 
 	// Collect commands to allow traffic from allowed (i.e. unmanaged) interfaces.
 	//
@@ -48,7 +69,7 @@ func (r *IPManager) Start(port, device string) error {
 	// allows traffic to private and local networks. This is necessary for
 	// intra-container communications on loopback and for monitoring traffic
 	// over the private network.
-	allowed := allowedInterfaces(device)
+	allowed := allowedInterfaces(iptables, device)
 
 	startCommands := []pipe.Pipe{
 		// Flushing existing rules does not change default policy.
@@ -82,15 +103,24 @@ func (r *IPManager) Start(port, device string) error {
 	err = pipe.Run(
 		pipe.Script("Setup iptables for managing access: "+device, commands...),
 	)
-	return err
+	return origRules, err
 }
 
 // Stop restores the iptables rules originally found before running Start().
 func (r *IPManager) Stop() ([]byte, error) {
-	if r.origRules == nil {
+	b4, err := stop(ip4tablesRestore, r.origRules4)
+	if err != nil {
+		return b4, err
+	}
+	b6, err := stop(ip6tablesRestore, r.origRules6)
+	return append(b4, b6...), err
+}
+
+func stop(iptablesRestore string, rules []byte) ([]byte, error) {
+	if rules == nil {
 		return nil, fmt.Errorf("cannot restore uninitialized rules")
 	}
-	b := bytes.NewBuffer(r.origRules)
+	b := bytes.NewBuffer(rules)
 	restore := pipe.Script("Restoring original iptables rules",
 		pipe.Read(b),
 		pipe.Exec(iptablesRestore),
@@ -98,7 +128,7 @@ func (r *IPManager) Stop() ([]byte, error) {
 	return pipe.Output(restore)
 }
 
-func allowedInterfaces(name string) []pipe.Pipe {
+func allowedInterfaces(iptables, name string) []pipe.Pipe {
 	ifaces, err := net.Interfaces()
 	rtx.Must(err, "failed to list interfaces")
 	pipes := []pipe.Pipe{}

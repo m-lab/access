@@ -61,9 +61,9 @@ func TestIPManager_Grant(t *testing.T) {
 			defer osx.MustSetenv("IPTABLES_EXIT", tt.grantExit)()
 
 			if tt.ip.To4() != nil {
-				iptables = "./testdata/iptables"
+				ip4tables = "./testdata/iptables"
 			} else {
-				iptables = "./testdata/ip6tables"
+				ip6tables = "./testdata/ip6tables"
 			}
 
 			r := NewIPManager(tt.max)
@@ -84,7 +84,7 @@ func TestIPManager_Grant(t *testing.T) {
 }
 
 func TestIPManager(t *testing.T) {
-	iptables = "./testdata/iptables"
+	ip4tables = "./testdata/iptables"
 	wg := sync.WaitGroup{}
 	mgr := NewIPManager(10)
 	ip := net.ParseIP("127.0.0.2")

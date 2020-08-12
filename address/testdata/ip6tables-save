@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exit ${IP6TABLES_SAVE_EXIT:-1}

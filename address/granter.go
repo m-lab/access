@@ -23,7 +23,8 @@ type Manager interface {
 // IPManager supports granting IP subnet access using iptables or ip6tables.
 type IPManager struct {
 	*semaphore.Weighted
-	origRules []byte
+	origRules4 []byte
+	origRules6 []byte
 }
 
 // ErrMaxConcurrent is returned when the max concurrent grants has already been reached.
@@ -71,17 +72,17 @@ func (r *IPManager) Revoke(ip net.IP) error {
 	return err
 }
 
-func ipTable(command string, ip net.IP) pipe.Pipe {
+func ipTable(action string, ip net.IP) pipe.Pipe {
 	// Parameters are the same for IPv4 and IPv6 addresses, but the command is not.
 	cmd, subnet := cmdForIP(ip)
-	return pipe.Exec(cmd, "--"+command+"=INPUT", "--source="+ip.String()+subnet, "--jump=ACCEPT")
+	return pipe.Exec(cmd, "--"+action+"=INPUT", "--source="+ip.String()+subnet, "--jump=ACCEPT")
 }
 
 func cmdForIP(ip net.IP) (string, string) {
 	if ip.To4() != nil {
-		return iptables, "/24"
+		return ip4tables, "/24"
 	}
-	return iptables, "/64"
+	return ip6tables, "/64"
 }
 
 // NullManager implements the address.Manager interface while doing nothing.

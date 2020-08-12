@@ -59,6 +59,7 @@ func TestIPManager_Grant(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// NOTE: the fake iptables commands read and exit using the EXIT environment.
 			defer osx.MustSetenv("IPTABLES_EXIT", tt.grantExit)()
+			defer osx.MustSetenv("IP6TABLES_EXIT", tt.grantExit)()
 
 			if tt.ip.To4() != nil {
 				ip4tables = "./testdata/iptables"

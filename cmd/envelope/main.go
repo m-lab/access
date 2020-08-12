@@ -37,6 +37,7 @@ var (
 	requireTokens bool
 	subject       string
 	manageDevice  string
+	timeout       time.Duration
 	tcpNetwork    = flagx.Enum{
 		Options: []string{"tcp", "tcp4", "tcp6"},
 		Value:   "tcp",
@@ -53,6 +54,7 @@ func init() {
 	flag.StringVar(&machine, "envelope.machine", "", "The machine name to expect in access token claims")
 	flag.StringVar(&subject, "envelope.subject", "", "The subject (service name) expected in access token claims")
 	flag.StringVar(&manageDevice, "envelope.device", "eth0", "The public network interface device name that the envelope manages")
+	flag.DurationVar(&timeout, "timeout", time.Minute, "Complete request within timeout. Overrides valid token expiration")
 	flagx.EnableAdvancedFlags() // Enable access to -httpx.tcp-network
 }
 
@@ -146,9 +148,12 @@ func (env *envelopeHandler) getDeadline(cl *jwt.Claims) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("missing claim when tokens required")
 	}
 
+	// Calculate the earliest the deadline could be.
+	minDeadline := time.Now().Add(timeout)
+
 	if cl == nil {
 		// This could happen if tokens are not required.
-		return time.Now().Add(time.Minute), nil
+		return minDeadline, nil
 	}
 
 	if cl.Subject != env.subject {
@@ -161,6 +166,12 @@ func (env *envelopeHandler) getDeadline(cl *jwt.Claims) (time.Time, error) {
 	if deadline.Before(time.Now()) {
 		logx.Debug.Println("already past expiration")
 		return time.Time{}, fmt.Errorf("already past claim expiration")
+	}
+
+	// If the token deadline is even earlier than the minDeadline, reset to the
+	// later time.
+	if deadline.Before(minDeadline) {
+		deadline = minDeadline
 	}
 	return deadline, nil
 }

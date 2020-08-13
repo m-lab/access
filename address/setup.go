@@ -18,6 +18,9 @@ var (
 	ip6tables        string
 	ip6tablesSave    string
 	ip6tablesRestore string
+
+	icmpv4 = "icmp"
+	icmpv6 = "icmpv6"
 )
 
 func init() {
@@ -46,18 +49,18 @@ func init() {
 func (r *IPManager) Start(port, device string) error {
 	// Save original rules.
 	var err error
-	r.origRules4, err = start(ip4tablesSave, ip4tables, port, device)
+	r.origRules4, err = start(ip4tablesSave, ip4tables, port, device, icmpv4)
 	if err != nil {
 		return err
 	}
-	r.origRules6, err = start(ip6tablesSave, ip6tables, port, device)
+	r.origRules6, err = start(ip6tablesSave, ip6tables, port, device, icmpv6)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func start(iptablesSave, iptables, port, device string) ([]byte, error) {
+func start(iptablesSave, iptables, port, device, protocol string) ([]byte, error) {
 	origRules, err := pipe.Output(pipe.Exec(iptablesSave))
 	if err != nil {
 		return nil, err
@@ -82,10 +85,13 @@ func start(iptablesSave, iptables, port, device string) ([]byte, error) {
 
 	startCommands = append(startCommands, allowed...)
 
+	// Accept incoming connections to the envelope service HTTP(S) server.
 	afterCommands := []pipe.Pipe{
-		// Accept incoming connections to the envelope service HTTP(S) server.
 		pipe.Exec(iptables,
-			// Envelop service itself.
+			// Allow protocol specific ICMP traffic.
+			"--append=INPUT", "--protocol="+protocol, "--jump=ACCEPT"),
+		pipe.Exec(iptables,
+			// Envelope service itself.
 			"--append=INPUT", "--protocol=tcp", "--dport="+port, "--jump=ACCEPT"),
 		pipe.Exec(iptables,
 			// DNS

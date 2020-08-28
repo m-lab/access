@@ -85,10 +85,10 @@ func main() {
 	rtx.Must(err, "Failed to contact locate service")
 	defer resp.Body.Close()
 
-	// Read response body into v2.QueryResult.
+	// Read response body into v2.NearestResult.
 	body, err := ioutil.ReadAll(resp.Body)
 	rtx.Must(err, "Failed to read response")
-	result := v2.QueryResult{}
+	result := v2.NearestResult{}
 	err = json.Unmarshal(body, &result)
 	rtx.Must(err, "Failed to parse locate result")
 
@@ -124,7 +124,7 @@ func main() {
 	}
 }
 
-func openWebsocket(ctx context.Context, result *v2.QueryResult) (*websocket.Conn, *url.URL, error) {
+func openWebsocket(ctx context.Context, result *v2.NearestResult) (*websocket.Conn, *url.URL, error) {
 	// Try each result until a connection to the envelope service succeeds.
 	// Then, run the user-provided command once.
 	for _, target := range result.Results {

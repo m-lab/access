@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,7 +19,7 @@ var (
 			Name: "ndt_access_token_requests_total",
 			Help: "Total number of NDT requests handled by the access tokencontroller.",
 		},
-		[]string{"request", "reason"},
+		[]string{"path", "request", "reason"},
 	)
 )
 
@@ -97,8 +98,13 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	token := r.Form.Get("access_token")
 	if token == "" && !t.Required {
 		// The access token is missing and tokens are not requried, so accept the request.
-		tokenAccessRequests.WithLabelValues("accepted", "empty").Inc()
+		tokenAccessRequests.WithLabelValues(r.URL.Path, "accepted", "empty").Inc()
 		return true, ctx
+	}
+	if token == "" {
+		// The access token was required but not provided.
+		tokenAccessRequests.WithLabelValues(r.URL.Path, "rejected", "missing").Inc()
+		return false, ctx
 	}
 	// Attempt to verify the token.
 	exp := t.Expected
@@ -106,11 +112,12 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	cl, err := t.Public.Verify(token, exp)
 	if err != nil {
 		// The access token was invalid; reject this request.
-		tokenAccessRequests.WithLabelValues("rejected", "invalid").Inc()
+		reason := strings.TrimPrefix(err.Error(), "square/go-jose/jwt: validation failed, ")
+		tokenAccessRequests.WithLabelValues(r.URL.Path, "rejected", reason).Inc()
 		return false, ctx
 	}
 	// If the claim Issuer was monitoring, set the context value so subsequent
 	// access controllers can check the context to allow monitoring reqeusts.
-	tokenAccessRequests.WithLabelValues("accepted", cl.Issuer).Inc()
+	tokenAccessRequests.WithLabelValues(r.URL.Path, "accepted", cl.Issuer).Inc()
 	return true, SetClaim(ctx, cl)
 }

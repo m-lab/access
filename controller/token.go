@@ -16,8 +16,8 @@ import (
 var (
 	tokenAccessRequests = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "ndt_access_token_requests_total",
-			Help: "Total number of NDT requests handled by the access tokencontroller.",
+			Name: "controller_access_token_requests_total",
+			Help: "Total number of requests handled by the access tokencontroller.",
 		},
 		[]string{"path", "request", "reason"},
 	)

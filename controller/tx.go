@@ -23,7 +23,7 @@ var (
 	maxRate          uint64
 	txAccessRequests = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "ndt_access_txcontroller_requests_total",
+			Name: "controller_access_txcontroller_requests_total",
 			Help: "Total number of requests handled by the access txcontroller.",
 		},
 		[]string{"request", "protocol"},

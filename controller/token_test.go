@@ -155,6 +155,7 @@ func TestTokenController_Limit(t *testing.T) {
 				visited = true
 				isMonitoring = IsMonitoring(GetClaim(req.Context()))
 			})
+			AllowPathLabel("/")
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Form = url.Values{}
 			if tt.token != "" {

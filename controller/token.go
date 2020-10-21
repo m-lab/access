@@ -21,6 +21,14 @@ var (
 		},
 		[]string{"path", "request", "reason"},
 	)
+
+	// Because all access token requests will use the same metric, we label them
+	// with the original path to differentiate services, e.g. ndt_protocol
+	// (ndt5) vs /ndt/v7/downloads (ndt7). However, some standard ports invite
+	// random requests that we do not want to include in our metric labels. This
+	// variable includes the complete set of paths that we will allow. All
+	// paths not found here will be labeled as "unknown".
+	allowedPaths = map[string]bool{}
 )
 
 // ErrInvalidVerifier may be returned when creating a new TokenController.
@@ -48,6 +56,12 @@ type TokenController struct {
 // tokens.
 type Verifier interface {
 	Verify(token string, exp jwt.Expected) (*jwt.Claims, error)
+}
+
+// AllowPathLabel specifies a resource path that we will use to label prometheus
+// metrics at runtime. Any path not allowed will be counted as "unknown".
+func AllowPathLabel(path string) {
+	allowedPaths[path] = true
 }
 
 // NewTokenController creates a new token controller that requires tokens (or
@@ -96,14 +110,19 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	// NOTE: r.Form is not populated until calling ParseForm.
 	r.ParseForm()
 	token := r.Form.Get("access_token")
+	pathLabel := "unknown"
+	if allowedPaths[r.URL.Path] {
+		// The path is an allowed pattern, so copy it wholesale.
+		pathLabel = r.URL.Path
+	}
 	if token == "" && !t.Required {
 		// The access token is missing and tokens are not requried, so accept the request.
-		tokenAccessRequests.WithLabelValues(r.URL.Path, "accepted", "empty").Inc()
+		tokenAccessRequests.WithLabelValues(pathLabel, "accepted", "empty").Inc()
 		return true, ctx
 	}
 	if token == "" {
 		// The access token was required but not provided.
-		tokenAccessRequests.WithLabelValues(r.URL.Path, "rejected", "missing").Inc()
+		tokenAccessRequests.WithLabelValues(pathLabel, "rejected", "missing").Inc()
 		return false, ctx
 	}
 	// Attempt to verify the token.
@@ -113,11 +132,11 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	if err != nil {
 		// The access token was invalid; reject this request.
 		reason := strings.TrimPrefix(err.Error(), "square/go-jose/jwt: validation failed, ")
-		tokenAccessRequests.WithLabelValues(r.URL.Path, "rejected", reason).Inc()
+		tokenAccessRequests.WithLabelValues(pathLabel, "rejected", reason).Inc()
 		return false, ctx
 	}
 	// If the claim Issuer was monitoring, set the context value so subsequent
 	// access controllers can check the context to allow monitoring reqeusts.
-	tokenAccessRequests.WithLabelValues(r.URL.Path, "accepted", cl.Issuer).Inc()
+	tokenAccessRequests.WithLabelValues(pathLabel, "accepted", cl.Issuer).Inc()
 	return true, SetClaim(ctx, cl)
 }

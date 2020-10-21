@@ -247,6 +247,7 @@ func main() {
 	ac := alice.New(logger).Extend(ctl)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v0/envelope/access", env.AllowRequest)
+	controller.AllowPathLabel("/v0/envelope/access")
 	srv := &http.Server{
 		Addr:    listenAddr,
 		Handler: ac.Then(mux),

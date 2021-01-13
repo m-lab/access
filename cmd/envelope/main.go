@@ -121,6 +121,8 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	if err != nil {
 		logx.Debug.Println("failed to get deadline:", err)
 		rw.WriteHeader(http.StatusBadRequest)
+		// NB: all errors returned by getDeadline are static strings, so using
+		// this as a label should be safe.
 		envelopeRequests.WithLabelValues(err.Error()).Inc()
 		return
 	}
@@ -131,7 +133,7 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	case err == address.ErrMaxConcurrent:
 		logx.Debug.Println("grant limit reached")
 		rw.WriteHeader(http.StatusServiceUnavailable)
-		envelopeRequests.WithLabelValues(err.Error()).Inc()
+		envelopeRequests.WithLabelValues(address.ErrMaxConcurrent.Error()).Inc()
 		return
 	case err != nil:
 		logx.Debug.Println("grant failed")

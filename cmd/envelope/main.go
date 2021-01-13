@@ -14,6 +14,8 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/websocket"
 	"github.com/justinas/alice"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"gopkg.in/square/go-jose.v2/jwt"
 
 	"github.com/m-lab/access/address"
@@ -42,6 +44,15 @@ var (
 		Options: []string{"tcp", "tcp4", "tcp6"},
 		Value:   "tcp",
 	}
+
+	// count the number of requests received and their apparent success or failure.
+	envelopeRequests = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "envelope_requests_total",
+			Help: "Total number of requests handled by the access envelope.",
+		},
+		[]string{"status"},
+	)
 )
 
 func init() {
@@ -91,6 +102,7 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	// state-changing operation.
 	if req.Method != http.MethodGet {
 		rw.WriteHeader(http.StatusMethodNotAllowed)
+		envelopeRequests.WithLabelValues("wrong-method").Inc()
 		return
 	}
 
@@ -99,6 +111,7 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	if err != nil {
 		logx.Debug.Println("failed to split remote addr:", err)
 		rw.WriteHeader(http.StatusBadRequest)
+		envelopeRequests.WithLabelValues("bad-remoteaddr").Inc()
 		return
 	}
 
@@ -108,6 +121,9 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	if err != nil {
 		logx.Debug.Println("failed to get deadline:", err)
 		rw.WriteHeader(http.StatusBadRequest)
+		// NOTE: all errors returned by getDeadline are static strings, so using
+		// this as a label should be safe.
+		envelopeRequests.WithLabelValues(err.Error()).Inc()
 		return
 	}
 
@@ -117,10 +133,12 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	case err == address.ErrMaxConcurrent:
 		logx.Debug.Println("grant limit reached")
 		rw.WriteHeader(http.StatusServiceUnavailable)
+		envelopeRequests.WithLabelValues(address.ErrMaxConcurrent.Error()).Inc()
 		return
 	case err != nil:
 		logx.Debug.Println("grant failed")
 		rw.WriteHeader(http.StatusInternalServerError)
+		envelopeRequests.WithLabelValues("iptables-grant-failure").Inc()
 		return
 	}
 
@@ -128,8 +146,9 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	if conn == nil {
 		logx.Debug.Println("setup websocket conn failed")
 		rw.WriteHeader(http.StatusInternalServerError)
-		// TODO: handle panic.
+		// TODO: handle panic. On panic, process will currently exit.
 		rtx.PanicOnError(env.Revoke(remote), "Failed to remove rule for "+remote.String())
+		envelopeRequests.WithLabelValues("websocket-setup-failure").Inc()
 		return
 	}
 
@@ -138,8 +157,9 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	// (to signal completion).
 	env.wait(req.Context(), conn, deadline)
 
-	// TODO: handle panic.
+	// TODO: handle panic. On panic, process will currently exit.
 	rtx.PanicOnError(env.Revoke(remote), "Failed to remove rule for "+remote.String())
+	envelopeRequests.WithLabelValues("success").Inc()
 }
 
 func (env *envelopeHandler) getDeadline(cl *jwt.Claims) (time.Time, error) {

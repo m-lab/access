@@ -121,7 +121,7 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	if err != nil {
 		logx.Debug.Println("failed to get deadline:", err)
 		rw.WriteHeader(http.StatusBadRequest)
-		// NB: all errors returned by getDeadline are static strings, so using
+		// NOTE: all errors returned by getDeadline are static strings, so using
 		// this as a label should be safe.
 		envelopeRequests.WithLabelValues(err.Error()).Inc()
 		return

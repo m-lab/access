@@ -98,6 +98,12 @@ func customFormat(w io.Writer, p handlers.LogFormatterParams) {
 }
 
 func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Request) {
+	defer func() {
+		if r := recover(); r != nil {
+			logx.Debug.Println("panic-failure", r)
+			envelopeRequests.WithLabelValues("panic-failure").Inc()
+		}
+	}()
 	// Websocket requests must be GET. Also note that AllowRequest is a
 	// state-changing operation.
 	if req.Method != http.MethodGet {
@@ -146,7 +152,6 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 	if conn == nil {
 		logx.Debug.Println("setup websocket conn failed")
 		rw.WriteHeader(http.StatusInternalServerError)
-		// TODO: handle panic. On panic, process will currently exit.
 		rtx.PanicOnError(env.Revoke(remote), "Failed to remove rule for "+remote.String())
 		envelopeRequests.WithLabelValues("websocket-setup-failure").Inc()
 		return
@@ -154,10 +159,9 @@ func (env *envelopeHandler) AllowRequest(rw http.ResponseWriter, req *http.Reque
 
 	// At this point, we want to wait for either the deadline (when the envelope
 	// service closes the connection) or the client to close the websocket conn
-	// (to signal completion).
+	// (to signal completion). The call to wait closes the websocket conn.
 	env.wait(req.Context(), conn, deadline)
 
-	// TODO: handle panic. On panic, process will currently exit.
 	rtx.PanicOnError(env.Revoke(remote), "Failed to remove rule for "+remote.String())
 	envelopeRequests.WithLabelValues("success").Inc()
 }

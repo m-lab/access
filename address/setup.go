@@ -89,20 +89,20 @@ func start(iptablesSave, iptables, port, device, protocol string) ([]byte, error
 	afterCommands := []pipe.Pipe{
 		pipe.Exec(iptables,
 			// Allow protocol specific ICMP traffic.
-			"--append=INPUT", "--protocol="+protocol, "--jump=ACCEPT"),
+			"--append=INPUT", "--protocol="+protocol, "--jump=ACCEPT", "--wait"),
 		pipe.Exec(iptables,
 			// Envelope service itself.
-			"--append=INPUT", "--protocol=tcp", "--dport="+port, "--jump=ACCEPT"),
+			"--append=INPUT", "--protocol=tcp", "--dport="+port, "--jump=ACCEPT", "--wait"),
 		pipe.Exec(iptables,
 			// DNS
-			"--append=INPUT", "--protocol=udp", "--dport=53", "--jump=ACCEPT"),
+			"--append=INPUT", "--protocol=udp", "--dport=53", "--jump=ACCEPT", "--wait"),
 		pipe.Exec(iptables,
 			// Established connections.
-			"--append=INPUT", "--match=conntrack", "--ctstate=ESTABLISHED,RELATED", "--jump=ACCEPT"),
+			"--append=INPUT", "--match=conntrack", "--ctstate=ESTABLISHED,RELATED", "--jump=ACCEPT", "--wait"),
 
 		// The last rule "rejects" packets, to send clients a signal that their
 		// connection was refused rather than silently dropped.
-		pipe.Exec(iptables, "--append=INPUT", "--jump=REJECT"),
+		pipe.Exec(iptables, "--append=INPUT", "--jump=REJECT", "--wait"),
 	}
 
 	commands := append(startCommands, afterCommands...)

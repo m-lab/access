@@ -76,11 +76,11 @@ func ipTable(action string, ip net.IP) pipe.Pipe {
 	// Parameters are the same for IPv4 and IPv6 addresses, but the command is not.
 	cmd, subnet := cmdForIP(ip)
 	return pipe.Script(action,
-		pipe.Exec(cmd, "--"+action+"=INPUT", "--source="+ip.String()+subnet, "--jump=ACCEPT"),
+		pipe.Exec(cmd, "--"+action+"=INPUT", "--source="+ip.String()+subnet, "--jump=ACCEPT", "--wait"),
 		// Unconditionally allow connections from "standard HTTP ports" to allow connections
 		// from "optimizing proxies" which may use different source addresses.
-		pipe.Exec(cmd, "--"+action+"=INPUT", "--protocol=tcp", "--dport=80", "--jump=ACCEPT"),
-		pipe.Exec(cmd, "--"+action+"=INPUT", "--protocol=tcp", "--dport=443", "--jump=ACCEPT"),
+		pipe.Exec(cmd, "--"+action+"=INPUT", "--protocol=tcp", "--dport=80", "--jump=ACCEPT", "--wait"),
+		pipe.Exec(cmd, "--"+action+"=INPUT", "--protocol=tcp", "--dport=443", "--jump=ACCEPT", "--wait"),
 	)
 }
 

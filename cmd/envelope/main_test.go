@@ -74,14 +74,15 @@ func Test_main(t *testing.T) {
 }
 
 type fakeManager struct {
-	grantErr error
+	grantErr  error
+	revokeErr error
 }
 
 func (f *fakeManager) Grant(ip net.IP) error {
 	return f.grantErr
 }
 func (f *fakeManager) Revoke(ip net.IP) error {
-	return nil
+	return f.revokeErr
 }
 
 // Test_envelopeHandler_AllowRequest_Errors exercises error paths that cannot be
@@ -155,7 +156,7 @@ func Test_envelopeHandler_AllowRequest_Errors(t *testing.T) {
 			grantErr: address.ErrMaxConcurrent,
 		},
 		{
-			name:   "error-grant-ip-failure-",
+			name:   "error-grant-ip-failure-generic",
 			method: http.MethodGet,
 			code:   http.StatusInternalServerError,
 			remote: "127.0.0.2:1234",
@@ -195,10 +196,11 @@ func Test_envelopeHandler_AllowRequest_Errors(t *testing.T) {
 func Test_envelopeHandler_AllowRequest_Websocket(t *testing.T) {
 	subject := "envelope"
 	tests := []struct {
-		name  string
-		code  int
-		sleep time.Duration
-		claim *jwt.Claims
+		name      string
+		code      int
+		sleep     time.Duration
+		claim     *jwt.Claims
+		revokeErr error
 	}{
 		{
 			name: "success-exit-fast",
@@ -219,11 +221,22 @@ func Test_envelopeHandler_AllowRequest_Websocket(t *testing.T) {
 			},
 			sleep: 2 * time.Second, // Force delay to create timeout.
 		},
+		{
+			name: "error-revoke-ip-failure-panic",
+			code: http.StatusSwitchingProtocols, // websocket is setup successfully.
+			claim: &jwt.Claims{
+				Issuer:  "locate",
+				Subject: subject,
+			},
+			revokeErr: errors.New("generic revoke error"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			env := &envelopeHandler{
-				manager: &fakeManager{},
+				manager: &fakeManager{
+					revokeErr: tt.revokeErr,
+				},
 				subject: "envelope",
 			}
 			requireTokens = true

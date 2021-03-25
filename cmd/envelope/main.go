@@ -180,7 +180,7 @@ func (env *envelopeHandler) getDeadline(cl *jwt.Claims) (time.Time, error) {
 		return minDeadline, nil
 	}
 
-	if cl.Subject != env.subject {
+	if cl.Subject != env.subject && !controller.IsMonitoring(cl) {
 		logx.Debug.Println("wrong subject claim")
 		return time.Time{}, fmt.Errorf("wrong claim subject")
 	}

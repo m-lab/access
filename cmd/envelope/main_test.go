@@ -222,6 +222,15 @@ func Test_envelopeHandler_AllowRequest_Websocket(t *testing.T) {
 			sleep: 2 * time.Second, // Force delay to create timeout.
 		},
 		{
+			name: "success-claim-subject-is-monitoring",
+			code: http.StatusSwitchingProtocols,
+			claim: &jwt.Claims{
+				Issuer:  "locate",
+				Subject: "monitoring",
+				Expiry:  jwt.NewNumericDate(time.Now().Add(time.Minute * 5)),
+			},
+		},
+		{
 			name: "error-revoke-ip-failure-panic",
 			code: http.StatusSwitchingProtocols, // websocket is setup successfully.
 			claim: &jwt.Claims{

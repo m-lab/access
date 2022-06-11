@@ -105,7 +105,7 @@ func main() {
 		listenAddr := forward[i].From.Host
 		s := &http.Server{
 			Addr:    listenAddr,
-			Handler: ac.Then(smx),
+			Handler: smx,
 			// NOTE: set absolute read and write timeouts for server connections.
 			ReadTimeout:  time.Minute, // TODO: make configurable.
 			WriteTimeout: time.Minute, // TODO: make configurable.

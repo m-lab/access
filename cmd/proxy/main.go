@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"log"
@@ -97,6 +98,9 @@ func main() {
 
 	for i := range forward {
 		rp := httputil.NewSingleHostReverseProxy(forward[i].Target)
+		rp.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
 		h := handlers.LoggingHandler(os.Stderr, rp)
 		// h := handlers.CustomLoggingHandler(os.Stderr, rp, LogFormatter)
 		smx := http.NewServeMux()

@@ -86,6 +86,14 @@ func init() {
 
 var mainCtx, mainCancel = context.WithCancel(context.Background())
 
+func EarlyRequestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Println(r.RemoteAddr, time.Now(), r.Method, r.URL, r.Proto, r.RequestURI)
+		// Clone the request with the context provided by isVerified.
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	defer mainCancel()
 	flag.Parse()
@@ -95,6 +103,7 @@ func main() {
 		rtx.Must(err, "Failed to load verifier for when tokens are required")
 	}
 	ac, _ := controller.Setup(mainCtx, v, tokenRequired, tokenMachine)
+	ac = ac.Append(EarlyRequestLogger)
 
 	for i := range forward {
 		rp := httputil.NewSingleHostReverseProxy(forward[i].Target)
@@ -102,7 +111,6 @@ func main() {
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
 		h := handlers.LoggingHandler(os.Stderr, rp)
-		// h := handlers.CustomLoggingHandler(os.Stderr, rp, LogFormatter)
 		smx := http.NewServeMux()
 		smx.Handle("/", ac.Then(h))
 

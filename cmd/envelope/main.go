@@ -265,13 +265,13 @@ func main() {
 		mgr = &address.NullManager{}
 	}
 	env := getEnvelopeHandler(subject, mgr)
-	ctl, _ := controller.Setup(mainCtx, verify, requireTokens, machine)
+	p := controller.Paths{"/v0/envelope/access": true}
+	ctl, _ := controller.Setup(mainCtx, verify, requireTokens, machine, p, p)
 	// Handle all requests using the alice http handler chaining library.
 	// Start with request logging.
 	ac := alice.New(logger).Extend(ctl)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v0/envelope/access", env.AllowRequest)
-	controller.AllowPathLabel("/v0/envelope/access")
 	srv := &http.Server{
 		Addr:    listenAddr,
 		Handler: ac.Then(mux),

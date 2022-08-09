@@ -18,6 +18,9 @@ const (
 	monitorSubject = "monitoring"
 )
 
+// Paths is used to specify resource names (paths) operated on by access controllers.
+type Paths map[string]bool
+
 // Controller is the interface that all access control types should implement.
 type Controller interface {
 	Limit(next http.Handler) http.Handler
@@ -61,7 +64,7 @@ func IsMonitoring(cl *jwt.Claims) bool {
 // TCP connections. See TxController.Accept for more information. When
 // tokenRequired is true, then the token controller requires valid access tokens
 // for the named machine.
-func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string) (alice.Chain, *TxController) {
+func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string, txEnf, tkEnf Paths) (alice.Chain, *TxController) {
 	// Controllers must be applied in specific order so that the tx controller
 	// can access the access token claims (if present) to identify monitoring
 	// requests. When token validation is successful, the validated claims are
@@ -74,7 +77,7 @@ func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string) 
 		Issuer:   locateIssuer,
 		Audience: jwt.Audience{machine},
 	}
-	token, err := NewTokenController(v, tokenRequired, exp)
+	token, err := NewTokenController(v, tokenRequired, exp, tkEnf)
 	if err == nil {
 		ac = ac.Append(token.Limit)
 	} else {
@@ -82,7 +85,7 @@ func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string) 
 	}
 
 	// If the tx controller is successful, include the tx limit.
-	tx, err := NewTxController(ctx)
+	tx, err := NewTxController(ctx, txEnf)
 	if err == nil {
 		ac = ac.Append(tx.Limit)
 	} else {

@@ -31,6 +31,7 @@ func TestTokenController_Limit(t *testing.T) {
 		code       int
 		visited    bool
 		monitoring bool
+		expected   Paths
 		wantErr    bool
 	}{
 		{
@@ -47,6 +48,23 @@ func TestTokenController_Limit(t *testing.T) {
 			required: false,
 			code:     http.StatusOK,
 			visited:  true,
+			expected: Paths{"/": true},
+		},
+		{
+			name:    "success-without-path",
+			issuer:  locateIssuer,
+			machine: "mlab1.fake0",
+			verifier: &fakeVerifier{
+				claims: &jwt.Claims{
+					Issuer:   locateIssuer,
+					Audience: []string{"mlab1.fake0"},
+					Expiry:   jwt.NewNumericDate(time.Now()),
+				},
+			},
+			required: false,
+			code:     http.StatusOK,
+			visited:  true,
+			expected: Paths{"/another-path": true},
 		},
 		{
 			name:    "success-with-token",
@@ -63,6 +81,7 @@ func TestTokenController_Limit(t *testing.T) {
 			token:    "this-is-a-fake-token",
 			code:     http.StatusOK,
 			visited:  true,
+			expected: Paths{"/": true},
 		},
 		{
 			name:    "success-with-token-with-monitoring-issuer",
@@ -81,6 +100,7 @@ func TestTokenController_Limit(t *testing.T) {
 			code:       http.StatusOK,
 			visited:    true,
 			monitoring: true, // because the Subject == monitorSubject.
+			expected:   Paths{"/": true},
 		},
 		{
 			name:    "error-token-required-but-not-provided",
@@ -93,6 +113,7 @@ func TestTokenController_Limit(t *testing.T) {
 			token:    "",
 			code:     http.StatusUnauthorized,
 			visited:  false, // "next" handler is never visited.
+			expected: Paths{"/": true},
 		},
 		{
 			name:    "error-failure-to-verify",
@@ -105,6 +126,7 @@ func TestTokenController_Limit(t *testing.T) {
 			token:    "this-is-a-fake-token",
 			code:     http.StatusUnauthorized,
 			visited:  false, // "next" handler is never visited.
+			expected: Paths{"/": true},
 		},
 		{
 			name:     "error-nil-verifier",
@@ -112,6 +134,7 @@ func TestTokenController_Limit(t *testing.T) {
 			machine:  "mlab1.fake0",
 			verifier: nil,
 			required: true,
+			expected: Paths{"/": true},
 			wantErr:  true,
 		},
 		{
@@ -122,6 +145,7 @@ func TestTokenController_Limit(t *testing.T) {
 				err: fmt.Errorf("fake failure to verify"),
 			},
 			required: true,
+			expected: Paths{"/": true},
 			wantErr:  true,
 		},
 		{
@@ -132,6 +156,18 @@ func TestTokenController_Limit(t *testing.T) {
 				err: fmt.Errorf("fake failure to verify"),
 			},
 			required: true,
+			expected: Paths{"/": true},
+			wantErr:  true,
+		},
+		{
+			name:    "error-nil-paths",
+			issuer:  "foo",
+			machine: "mlab1.fake0",
+			verifier: &fakeVerifier{
+				err: fmt.Errorf("fake failure to verify"),
+			},
+			required: true,
+			expected: nil,
 			wantErr:  true,
 		},
 	}
@@ -141,7 +177,7 @@ func TestTokenController_Limit(t *testing.T) {
 				Issuer:   tt.issuer,
 				Audience: jwt.Audience{tt.machine},
 			}
-			token, err := NewTokenController(tt.verifier, tt.required, exp)
+			token, err := NewTokenController(tt.verifier, tt.required, exp, tt.expected)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewTokenController() returned err; got %v, wantErr %t", err, tt.wantErr)
 			}
@@ -155,7 +191,6 @@ func TestTokenController_Limit(t *testing.T) {
 				visited = true
 				isMonitoring = IsMonitoring(GetClaim(req.Context()))
 			})
-			AllowPathLabel("/")
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Form = url.Values{}
 			if tt.token != "" {

@@ -47,11 +47,12 @@ func TestTxController_Limit(t *testing.T) {
 			rtx.Must(err, "Failed to allocate procfs")
 
 			tx := &TxController{
-				device:  device,
-				limit:   tt.limit,
-				pfs:     pfs,
-				period:  time.Millisecond,
-				current: tt.current,
+				device:   device,
+				limit:    tt.limit,
+				pfs:      pfs,
+				period:   time.Millisecond,
+				current:  tt.current,
+				Enforced: Paths{"/": true},
 			}
 
 			visited := false
@@ -77,30 +78,42 @@ func TestNewTxController(t *testing.T) {
 		want     *TxController
 		procPath string
 		device   string
+		enforced Paths
 		wantErr  bool
 	}{
 		{
 			name:     "failure",
 			procPath: "testdata/proc-failure",
 			device:   "eth0",
+			enforced: Paths{},
 			wantErr:  true,
 		},
 		{
 			name:     "failure-nodevfile",
 			procPath: "testdata/proc-nodevfile",
 			device:   "eth0",
+			enforced: Paths{},
 			wantErr:  true,
 		},
 		{
 			name:     "failure-nodevice",
 			procPath: "testdata/proc-nodevice",
 			device:   "eth0",
+			enforced: Paths{},
 			wantErr:  true,
 		},
 		{
-			name:    "failure-nodevice",
-			device:  "",
-			wantErr: true,
+			name:     "failure-nilpaths",
+			procPath: "testdata/proc-success",
+			device:   "eth0",
+			enforced: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "failure-nodevice",
+			device:   "",
+			enforced: Paths{},
+			wantErr:  true,
 		},
 	}
 	for _, tt := range tests {
@@ -109,7 +122,7 @@ func TestNewTxController(t *testing.T) {
 			procPath = tt.procPath
 			maxRate = tt.limit
 			ctx := context.Background()
-			got, err := NewTxController(ctx)
+			got, err := NewTxController(ctx, tt.enforced)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewTxController() error = %v, wantErr %v", err, tt.wantErr)
 				return

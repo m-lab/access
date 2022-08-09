@@ -30,6 +30,9 @@ var (
 	)
 	// ErrNoDevice is returned when device is empty or not found in procfs.
 	ErrNoDevice = errors.New("no device found")
+
+	// ErrNilPaths is returned when a nil Paths value is given.
+	ErrNilPaths = errors.New("nil paths value given")
 )
 
 func init() {
@@ -44,13 +47,22 @@ type TxController struct {
 	current uint64
 	limit   uint64
 	pfs     procfs.FS
+
+	// Enforced is a set of HTTP request resource paths on which the
+	// TokenController will enforce token authorization. Any resource missing
+	// from the Enforced set, is allowed. When the TxController is used for
+	// Accept(), these paths have no effect.
+	Enforced Paths
 }
 
 // NewTxController creates a new instance and runs TxController.Watch in a
 // goroutine to observe the current rate every 100 msec. When the given context
 // is canceled or expires, Watch will return and the TxController will no longer
 // be updated until Watch is started again.
-func NewTxController(ctx context.Context) (*TxController, error) {
+func NewTxController(ctx context.Context, enforced Paths) (*TxController, error) {
+	if enforced == nil {
+		return nil, ErrNilPaths
+	}
 	if device == "" {
 		return nil, ErrNoDevice
 	}
@@ -64,10 +76,11 @@ func NewTxController(ctx context.Context) (*TxController, error) {
 		return nil, err
 	}
 	tx := &TxController{
-		device: device,
-		limit:  maxRate,
-		pfs:    pfs,
-		period: 100 * time.Millisecond,
+		device:   device,
+		limit:    maxRate,
+		pfs:      pfs,
+		period:   100 * time.Millisecond,
+		Enforced: enforced,
 	}
 	// Run watch in a goroutine.
 	go tx.Watch(ctx)
@@ -86,7 +99,8 @@ func (tx *TxController) Accept(l net.Listener) (net.Conn, error) {
 		// No need to check isLimited, the accept failed.
 		return nil, err
 	}
-	if tx.isLimited("raw", false) {
+	// NOTE: treat all raw accept requests as an "enforced path".
+	if tx.isLimited("raw", false, true) {
 		defer conn.Close()
 		return nil, fmt.Errorf("TxController rejected connection %s", conn.RemoteAddr())
 	}
@@ -105,9 +119,9 @@ func (tx *TxController) set(value uint64) {
 // isLimited checks the current tx rate and returns whether the connection
 // should be accepted or rejected. If monitoring is true, then even if the
 // current limit is exceeded, the request will be accepted.
-func (tx *TxController) isLimited(proto string, monitoring bool) bool {
+func (tx *TxController) isLimited(proto string, monitoring, enforcedPath bool) bool {
 	cur := tx.Current()
-	if tx.limit > 0 && cur > tx.limit && !monitoring {
+	if tx.limit > 0 && cur > tx.limit && !monitoring && enforcedPath {
 		txAccessRequests.WithLabelValues("rejected", proto).Inc()
 		return true
 	}
@@ -121,7 +135,7 @@ func (tx *TxController) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Discover whether the access token was issued for monitoring.
 		monitoring := IsMonitoring(GetClaim(r.Context()))
-		if tx.isLimited("http", monitoring) {
+		if tx.isLimited("http", monitoring, tx.Enforced[r.URL.Path]) {
 			// 503 - https://tools.ietf.org/html/rfc7231#section-6.6.4
 			w.WriteHeader(http.StatusServiceUnavailable)
 			// Return without additional response.

@@ -21,14 +21,6 @@ var (
 		},
 		[]string{"path", "request", "reason"},
 	)
-
-	// Because all access token requests will use the same metric, we label them
-	// with the original path to differentiate services, e.g. ndt_protocol
-	// (ndt5) vs /ndt/v7/downloads (ndt7). However, some standard ports invite
-	// random requests that we do not want to include in our metric labels. This
-	// variable includes the complete set of paths that we will allow. All
-	// paths not found here will be labeled as "unknown".
-	allowedPaths = map[string]bool{}
 )
 
 // ErrInvalidVerifier may be returned when creating a new TokenController.
@@ -50,6 +42,11 @@ type TokenController struct {
 	// Client-provided claims are only valid if each non-empty expected field
 	// matches the corresponding claims field.
 	Expected jwt.Expected
+
+	// Enforced is a set of HTTP request resource paths on which the
+	// TokenController will enforce token authorization. Any resource missing
+	// from the Enforced set is allowed.
+	Enforced Paths
 }
 
 // Verifier is used by the TokenController to verify JWT claims in access
@@ -58,16 +55,13 @@ type Verifier interface {
 	Verify(token string, exp jwt.Expected) (*jwt.Claims, error)
 }
 
-// AllowPathLabel specifies a resource path that we will use to label prometheus
-// metrics at runtime. Any path not allowed will be counted as "unknown".
-func AllowPathLabel(path string) {
-	allowedPaths[path] = true
-}
-
 // NewTokenController creates a new token controller that requires tokens (or
 // not) and the default expected claims. An audience must be specified. The
 // issuer should be provided.
-func NewTokenController(verifier Verifier, required bool, exp jwt.Expected) (*TokenController, error) {
+func NewTokenController(verifier Verifier, required bool, exp jwt.Expected, enforced Paths) (*TokenController, error) {
+	if enforced == nil {
+		return nil, ErrNilPaths
+	}
 	if reflect.ValueOf(verifier).IsNil() {
 		// NOTE: use reflect to extract the value because verifier interface
 		// type is non-nil and "verifier == nil" otherwise fails.
@@ -83,6 +77,7 @@ func NewTokenController(verifier Verifier, required bool, exp jwt.Expected) (*To
 		Public:   verifier,
 		Required: required,
 		Expected: exp,
+		Enforced: enforced,
 	}, nil
 }
 
@@ -111,10 +106,14 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	r.ParseForm()
 	token := r.Form.Get("access_token")
 	pathLabel := "unknown"
-	if allowedPaths[r.URL.Path] {
-		// The path is an allowed pattern, so copy it wholesale.
-		pathLabel = r.URL.Path
+	if !t.Enforced[r.URL.Path] {
+		// This path is not in the Enforced set, so accept the connection.
+		tokenAccessRequests.WithLabelValues(pathLabel, "accepted", "unenforced-path").Inc()
+		return true, ctx
 	}
+
+	// The path is an enforced path, so copy it wholesale as a label.
+	pathLabel = r.URL.Path
 	if token == "" && !t.Required {
 		// The access token is missing and tokens are not requried, so accept the request.
 		tokenAccessRequests.WithLabelValues(pathLabel, "accepted", "empty").Inc()

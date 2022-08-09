@@ -73,7 +73,8 @@ func TestSetupDefault(t *testing.T) {
 			// Use synthetic proc data to allow tests to work on any platform.
 			procPath = "testdata/proc-success"
 			device = tt.device
-			ac, _, tx := Setup(ctx, tt.v, false, tt.hostname, Paths{"/": true})
+			p := Paths{"/": true}
+			ac, tx := Setup(ctx, tt.v, false, tt.hostname, p, p)
 			// The tx controller only works in linux; only report errors for linux.
 			if (tx != nil) == tt.wantNil {
 				t.Errorf("Setup() tx = %v, wantNil %v", tx, tt.wantNil)

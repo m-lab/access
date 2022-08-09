@@ -51,6 +51,22 @@ func TestTokenController_Limit(t *testing.T) {
 			expected: Paths{"/": true},
 		},
 		{
+			name:    "success-without-path",
+			issuer:  locateIssuer,
+			machine: "mlab1.fake0",
+			verifier: &fakeVerifier{
+				claims: &jwt.Claims{
+					Issuer:   locateIssuer,
+					Audience: []string{"mlab1.fake0"},
+					Expiry:   jwt.NewNumericDate(time.Now()),
+				},
+			},
+			required: false,
+			code:     http.StatusOK,
+			visited:  true,
+			expected: Paths{"/another-path": true},
+		},
+		{
 			name:    "success-with-token",
 			issuer:  locateIssuer,
 			machine: "mlab1.fake0",

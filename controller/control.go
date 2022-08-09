@@ -64,7 +64,7 @@ func IsMonitoring(cl *jwt.Claims) bool {
 // TCP connections. See TxController.Accept for more information. When
 // tokenRequired is true, then the token controller requires valid access tokens
 // for the named machine.
-func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string, enforced Paths) (alice.Chain, *TxController) {
+func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string, enforced Paths) (alice.Chain, *TokenController, *TxController) {
 	// Controllers must be applied in specific order so that the tx controller
 	// can access the access token claims (if present) to identify monitoring
 	// requests. When token validation is successful, the validated claims are
@@ -92,5 +92,5 @@ func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string, 
 		log.Printf("WARNING: tx controller is disabled: %v", err)
 	}
 
-	return ac, tx
+	return ac, token, tx
 }

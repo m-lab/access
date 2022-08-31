@@ -1,8 +1,8 @@
 # Built the command using a golang base image.
-FROM golang:1.18-alpine3.14 AS build
-RUN apk add git
+FROM golang:1.18 AS build
 ADD . /go/src/github.com/m-lab/access
-RUN go get -v github.com/m-lab/access/cmd/envelope
+WORKDIR /go/src/github.com/m-lab/access
+RUN CGO_ENABLED=0 go install -v ./cmd/envelope
 
 # Now copy the resulting command into the minimal base image.
 FROM alpine:3.14

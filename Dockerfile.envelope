@@ -1,5 +1,5 @@
 # Built the command using a golang base image.
-FROM golang:1.21 AS build
+FROM golang:1.20 AS build
 ADD . /go/src/github.com/m-lab/access
 WORKDIR /go/src/github.com/m-lab/access
 RUN CGO_ENABLED=0 go install -v ./cmd/envelope

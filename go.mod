@@ -7,7 +7,7 @@ require (
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/websocket v1.5.0
 	github.com/justinas/alice v1.2.0
-	github.com/m-lab/go v0.1.53
+	github.com/m-lab/go v0.1.66
 	github.com/m-lab/locate v0.11.0
 	github.com/prometheus/client_golang v1.13.0
 	github.com/prometheus/procfs v0.8.0

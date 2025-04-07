@@ -94,12 +94,14 @@ func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 		return nil, errors.New("no headers found in token")
 	}
 
+	// Note: We will not support tokens with multiple signatures/headers.
 	keyID := headers[0].KeyID
 	pub, found := k.keys[keyID]
 	if !found {
 		return nil, fmt.Errorf("%w: %s", ErrKeyIDNotFound, keyID)
 	}
 
+	// Claims validates the jwt signature before extracting the token claims.
 	cl := &jwt.Claims{}
 	err = tok.Claims(pub, cl)
 	if err != nil {
@@ -108,17 +110,21 @@ func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 	return cl, nil
 }
 
-// Verify verifies the given token and returns its claims.
+// Verify checks the token signature and that the claims match the expected
+// config. Note: if validation of the expected claims fails, then Verify will
+// return the original token claims with the corresponding non-nil validation error.
 func (k *Verifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, error) {
 	cl, err := k.Claims(token)
 	if err != nil {
 		return nil, err
 	}
-	err = cl.Validate(exp)
+	// Verify that the expected claims satisfy the signed claims. Default leeway
+	// for Validate() would be 1*time.Minute. This sets it to 0.
+	err = cl.ValidateWithLeeway(exp, 0)
 	return cl, err
 }
 
-// LoadJSONWebKey loads a JSON Web Key from the given JSON data.
+// LoadJSONWebKey loads and validates the given JWK.
 func LoadJSONWebKey(json []byte, isPublic bool) (*jose.JSONWebKey, error) {
 	var jwk jose.JSONWebKey
 	err := jwk.UnmarshalJSON(json)

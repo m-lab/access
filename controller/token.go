@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 var (
@@ -70,7 +70,7 @@ func NewTokenController(verifier Verifier, required bool, exp jwt.Expected, enfo
 	if exp.Issuer == "" {
 		return nil, jwt.ErrInvalidIssuer
 	}
-	if exp.Audience == nil || exp.Audience.Contains("") {
+	if exp.AnyAudience == nil || exp.AnyAudience.Contains("") {
 		return nil, jwt.ErrInvalidAudience
 	}
 	return &TokenController{

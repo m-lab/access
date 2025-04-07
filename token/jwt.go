@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	jose "gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 )
 
 // ErrKeyIDNotFound is returned when trying to verify a token when there are no
@@ -18,14 +18,15 @@ var ErrKeyIDNotFound = errors.New("Key ID not found for given token header")
 // with the same KeyID. KeyIDs should be unique.
 var ErrDuplicateKeyID = errors.New("Duplicate KeyID found")
 
-// Verifier supports operations on a public JWK.
+// Verifier is a JWT verifier. Requires a public JWK.
 type Verifier struct {
 	keys map[string]*jose.JSONWebKey
 }
 
-// Signer supports operations on a private JWK.
+// Signer is a JWT signer. Requires a private JWK.
 type Signer struct {
 	jwt.Builder
+	key *jose.JSONWebKey
 }
 
 // NewSigner accepts a serialized, private JWK and creates a new Signer instance.
@@ -34,18 +35,30 @@ func NewSigner(key []byte) (*Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	alg := jose.SignatureAlgorithm(priv.Algorithm)
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: alg, Key: priv}, nil)
+
+	opts := &jose.SignerOptions{}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.SignatureAlgorithm(priv.Algorithm), Key: priv}, opts)
+	if err != nil {
+		return nil, err
+	}
+
 	p := &Signer{
 		Builder: jwt.Signed(signer),
+		key:     priv,
 	}
-	return p, err
+	return p, nil
 }
 
-// Sign generates a signed JWT in compact form.
+// Sign signs the given claims and returns the serialized token.
 func (k *Signer) Sign(cl jwt.Claims) (string, error) {
-	// Create a builder for signed tokens, apply claims, and serialize.
-	return k.Builder.Claims(cl).CompactSerialize()
+	return k.Builder.Claims(cl).Serialize()
+}
+
+// JWKS returns a JSON Web Key Set containing the public key for this signer
+func (s *Signer) JWKS() jose.JSONWebKeySet {
+	return jose.JSONWebKeySet{
+		Keys: []jose.JSONWebKey{s.key.Public()},
+	}
 }
 
 // NewVerifier accepts serialized, public JWKs and creates a new Verifier
@@ -74,21 +87,30 @@ func NewVerifier(keys ...[]byte) (*Verifier, error) {
 // validate them against any expected claims. Useful for extracting
 // only the claims object.
 func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
-	obj, err := jwt.ParseSigned(token)
+	tok, err := jwt.ParseSigned(token, []jose.SignatureAlgorithm{
+		jose.EdDSA,
+		jose.ES256,
+		jose.RS256,
+	})
 	if err != nil {
 		return nil, err
 	}
-	// NOTE: if ParseSigned returns without error, then we are guaranteed that
-	// at least one header is present. And, we will not support tokens with
-	// multiple signatures/headers.
-	keyID := obj.Headers[0].KeyID
+
+	headers := tok.Headers
+	if len(headers) == 0 {
+		return nil, errors.New("no headers found in token")
+	}
+
+	// Note: We will not support tokens with multiple signatures/headers.
+	keyID := headers[0].KeyID
 	pub, found := k.keys[keyID]
 	if !found {
 		return nil, fmt.Errorf("%w: %s", ErrKeyIDNotFound, keyID)
 	}
+
 	// Claims validates the jwt signature before extracting the token claims.
 	cl := &jwt.Claims{}
-	err = obj.Claims(pub, cl)
+	err = tok.Claims(pub, cl)
 	if err != nil {
 		return nil, err
 	}
@@ -103,8 +125,9 @@ func (k *Verifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Verify that the expected claims satisfy the signed claims.
-	err = cl.Validate(exp)
+	// Verify that the expected claims satisfy the signed claims. Default leeway
+	// for Validate() would be 1*time.Minute. This sets it to 0.
+	err = cl.ValidateWithLeeway(exp, 0)
 	return cl, err
 }
 

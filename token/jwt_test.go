@@ -4,11 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/m-lab/go/rtx"
-
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/go-test/deep"
-	jose "gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
+	"github.com/m-lab/go/rtx"
 )
 
 func TestSignAndVerify(t *testing.T) {
@@ -33,13 +32,13 @@ func TestSignAndVerify(t *testing.T) {
 			vkey: insecurePublicTestKey,
 			cl: jwt.Claims{
 				Issuer:   "issuer",
-				Audience: []string{"mlab1", "mlab2"},
+				Audience: jwt.Audience{"mlab1", "mlab2"},
 				Expiry:   jwt.NewNumericDate(time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC).Add(time.Minute)),
 			},
 			exp: jwt.Expected{
-				Issuer:   "issuer",
-				Audience: []string{"mlab1"},
-				Time:     time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC),
+				Issuer:      "issuer",
+				AnyAudience: jwt.Audience{"mlab1"},
+				Time:        time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC),
 			},
 		},
 		{
@@ -53,7 +52,7 @@ func TestSignAndVerify(t *testing.T) {
 			vkey: `thi-is-not-a-verify-key`,
 			cl: jwt.Claims{
 				Issuer:   "issuer",
-				Audience: []string{"mlab1", "mlab2"},
+				Audience: jwt.Audience{"mlab1", "mlab2"},
 				Expiry:   jwt.NewNumericDate(time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC).Add(time.Minute)),
 			},
 			wantVerifyErr: true,
@@ -64,7 +63,7 @@ func TestSignAndVerify(t *testing.T) {
 			vkey: insecurePublicTestKey,
 			cl: jwt.Claims{
 				Issuer:   "issuer",
-				Audience: []string{"mlab1", "mlab2"},
+				Audience: jwt.Audience{"mlab1", "mlab2"},
 				Expiry:   jwt.NewNumericDate(time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC).Add(time.Minute)),
 			},
 			wantVerifyErr:       true,
@@ -179,5 +178,40 @@ func TestLoadJSONWebKeyErrors(t *testing.T) {
 	if got.Algorithm != want.Algorithm {
 		t.Errorf("LoadJSONWebKey() alg mismatch; got %q, want %q",
 			got.Algorithm, want.Algorithm)
+	}
+}
+
+func TestSignerJWKS(t *testing.T) {
+	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +
+		`"d":"RXSpuTicBEL5GY-76cGgRXIEOB-q4hJ0vqydEnOztIY"}`
+
+	// Create a new signer
+	s, err := NewSigner([]byte(insecurePrivateTestKey))
+	if err != nil {
+		t.Fatalf("NewSigner failed: %v", err)
+	}
+
+	// Get the JWKS
+	jwks := s.JWKS()
+
+	// Verify the JWKS contains exactly one key
+	if len(jwks.Keys) != 1 {
+		t.Errorf("Expected JWKS to contain 1 key, got %d", len(jwks.Keys))
+	}
+
+	// Verify the key in JWKS is public
+	if !jwks.Keys[0].IsPublic() {
+		t.Error("Expected JWKS to contain only public key")
+	}
+
+	// Verify the key ID matches
+	if jwks.Keys[0].KeyID != "112" {
+		t.Errorf("Expected key ID '112', got '%s'", jwks.Keys[0].KeyID)
+	}
+
+	// Verify the algorithm matches
+	if jwks.Keys[0].Algorithm != "ES256" {
+		t.Errorf("Expected algorithm 'ES256', got '%s'", jwks.Keys[0].Algorithm)
 	}
 }

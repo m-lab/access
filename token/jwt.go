@@ -76,7 +76,9 @@ func NewVerifier(keys ...[]byte) (*Verifier, error) {
 	}, nil
 }
 
-// Claims returns the claims from a token.
+// Claims extracts the claims from a signed token, but does not
+// validate them against any expected claims. Useful for extracting
+// only the claims object.
 func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 	tok, err := jwt.ParseSigned(token, []jose.SignatureAlgorithm{
 		jose.EdDSA,

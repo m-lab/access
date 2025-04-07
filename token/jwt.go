@@ -22,7 +22,7 @@ type Signer struct {
 	key *jose.JSONWebKey
 }
 
-// NewSigner creates a new Signer from the given private key.
+// NewSigner accepts a serialized, private JWK and creates a new Signer instance.
 func NewSigner(key []byte) (*Signer, error) {
 	priv, err := LoadJSONWebKey(key, false)
 	if err != nil {
@@ -54,7 +54,11 @@ func (s *Signer) JWKS() jose.JSONWebKeySet {
 	}
 }
 
-// NewVerifier creates a new Verifier from the given public keys.
+// NewVerifier accepts serialized, public JWKs and creates a new Verifier
+// instance. Caller may pass multiple verifier keys to recognize and support key
+// rotation of signer keys, or multiple issuers. When providing multiple keys
+// each must have a distinct "keyid". An error derived from ErrDuplicateKeyID is
+// returned when keys have the same keyid.
 func NewVerifier(keys ...[]byte) (*Verifier, error) {
 	pubKeys := map[string]*jose.JSONWebKey{}
 	for i := range keys {

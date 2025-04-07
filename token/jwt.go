@@ -11,14 +11,17 @@ import (
 var ErrKeyIDNotFound = errors.New("Key ID not found for given token header")
 var ErrDuplicateKeyID = errors.New("Duplicate KeyID found")
 
+// Verifier is a JWT verifier.
 type Verifier struct {
 	keys map[string]*jose.JSONWebKey
 }
 
+// Signer is a JWT signer.
 type Signer struct {
 	jwt.Builder
 }
 
+// NewSigner creates a new Signer from the given private key.
 func NewSigner(key []byte) (*Signer, error) {
 	priv, err := LoadJSONWebKey(key, false)
 	if err != nil {
@@ -37,10 +40,12 @@ func NewSigner(key []byte) (*Signer, error) {
 	return p, nil
 }
 
+// Sign signs the given claims and returns the serialized token.
 func (k *Signer) Sign(cl jwt.Claims) (string, error) {
 	return k.Builder.Claims(cl).Serialize()
 }
 
+// NewVerifier creates a new Verifier from the given public keys.
 func NewVerifier(keys ...[]byte) (*Verifier, error) {
 	pubKeys := map[string]*jose.JSONWebKey{}
 	for i := range keys {
@@ -58,6 +63,7 @@ func NewVerifier(keys ...[]byte) (*Verifier, error) {
 	}, nil
 }
 
+// Claims returns the claims from a token.
 func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 	tok, err := jwt.ParseSigned(token, []jose.SignatureAlgorithm{
 		jose.EdDSA,
@@ -87,6 +93,7 @@ func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 	return cl, nil
 }
 
+// Verify verifies the given token and returns its claims.
 func (k *Verifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, error) {
 	cl, err := k.Claims(token)
 	if err != nil {
@@ -110,6 +117,7 @@ func (k *Verifier) JWKS() jose.JSONWebKeySet {
 	return jwks
 }
 
+// LoadJSONWebKey loads a JSON Web Key from the given JSON data.
 func LoadJSONWebKey(json []byte, isPublic bool) (*jose.JSONWebKey, error) {
 	var jwk jose.JSONWebKey
 	err := jwk.UnmarshalJSON(json)

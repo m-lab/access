@@ -4,11 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/m-lab/go/rtx"
-
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/go-test/deep"
-	jose "gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
+	"github.com/m-lab/go/rtx"
 )
 
 func TestSignAndVerify(t *testing.T) {
@@ -33,13 +32,13 @@ func TestSignAndVerify(t *testing.T) {
 			vkey: insecurePublicTestKey,
 			cl: jwt.Claims{
 				Issuer:   "issuer",
-				Audience: []string{"mlab1", "mlab2"},
+				Audience: jwt.Audience{"mlab1", "mlab2"},
 				Expiry:   jwt.NewNumericDate(time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC).Add(time.Minute)),
 			},
 			exp: jwt.Expected{
-				Issuer:   "issuer",
-				Audience: []string{"mlab1"},
-				Time:     time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC),
+				Issuer:      "issuer",
+				AnyAudience: jwt.Audience{"mlab1"},
+				Time:        time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC),
 			},
 		},
 		{
@@ -53,7 +52,7 @@ func TestSignAndVerify(t *testing.T) {
 			vkey: `thi-is-not-a-verify-key`,
 			cl: jwt.Claims{
 				Issuer:   "issuer",
-				Audience: []string{"mlab1", "mlab2"},
+				Audience: jwt.Audience{"mlab1", "mlab2"},
 				Expiry:   jwt.NewNumericDate(time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC).Add(time.Minute)),
 			},
 			wantVerifyErr: true,
@@ -64,7 +63,7 @@ func TestSignAndVerify(t *testing.T) {
 			vkey: insecurePublicTestKey,
 			cl: jwt.Claims{
 				Issuer:   "issuer",
-				Audience: []string{"mlab1", "mlab2"},
+				Audience: jwt.Audience{"mlab1", "mlab2"},
 				Expiry:   jwt.NewNumericDate(time.Date(2019, time.December, 1, 1, 2, 0, 0, time.UTC).Add(time.Minute)),
 			},
 			wantVerifyErr:       true,
@@ -179,5 +178,76 @@ func TestLoadJSONWebKeyErrors(t *testing.T) {
 	if got.Algorithm != want.Algorithm {
 		t.Errorf("LoadJSONWebKey() alg mismatch; got %q, want %q",
 			got.Algorithm, want.Algorithm)
+	}
+}
+
+func TestVerifier_JWKS(t *testing.T) {
+	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"1","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
+	insecurePublicTestKey2 := `{"use":"sig","kty":"EC","kid":"2","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
+
+	tests := []struct {
+		name     string
+		keys     [][]byte
+		wantKids []string
+		wantErr  bool
+	}{
+		{
+			name:     "single key",
+			keys:     [][]byte{[]byte(insecurePublicTestKey)},
+			wantKids: []string{"1"},
+		},
+		{
+			name: "multiple keys",
+			keys: [][]byte{
+				[]byte(insecurePublicTestKey),
+				[]byte(insecurePublicTestKey2),
+			},
+			wantKids: []string{"1", "2"},
+		},
+		{
+			name:     "no keys",
+			keys:     [][]byte{},
+			wantKids: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := NewVerifier(tt.keys...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewVerifier() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+
+			jwks := v.JWKS()
+
+			// Check that we have the expected number of keys
+			if len(jwks.Keys) != len(tt.wantKids) {
+				t.Errorf("JWKS() wrong number of keys = %v, want %v", len(jwks.Keys), len(tt.wantKids))
+			}
+
+			// Create a map of found key IDs
+			foundKids := make(map[string]bool)
+			for _, key := range jwks.Keys {
+				foundKids[key.KeyID] = true
+
+				// Verify each key is public
+				if !key.IsPublic() {
+					t.Errorf("JWKS() key %s is not public", key.KeyID)
+				}
+			}
+
+			// Verify all expected key IDs are present
+			for _, kid := range tt.wantKids {
+				if !foundKids[kid] {
+					t.Errorf("JWKS() missing key ID = %v", kid)
+				}
+			}
+		})
 	}
 }

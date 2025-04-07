@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"gopkg.in/square/go-jose.v2/jwt"
-
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/m-lab/access/token"
 	"github.com/m-lab/go/flagx"
 	"github.com/m-lab/go/pretty"

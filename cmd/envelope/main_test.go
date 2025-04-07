@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/websocket"
 	"github.com/justinas/alice"
-	"gopkg.in/square/go-jose.v2/jwt"
 
 	"github.com/m-lab/access/address"
 	"github.com/m-lab/access/controller"

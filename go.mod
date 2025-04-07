@@ -1,8 +1,11 @@
 module github.com/m-lab/access
 
-go 1.20
+go 1.22
+
+toolchain go1.22.2
 
 require (
+	github.com/go-jose/go-jose/v4 v4.0.5
 	github.com/go-test/deep v1.0.8
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/websocket v1.5.0
@@ -13,7 +16,6 @@ require (
 	github.com/prometheus/procfs v0.8.0
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 	gopkg.in/m-lab/pipe.v3 v3.0.0-20180108231244-604e84f43ee0
-	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
 require (
@@ -26,7 +28,7 @@ require (
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
-	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9 // indirect
-	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
+	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/sys v0.29.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 )

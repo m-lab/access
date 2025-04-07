@@ -8,8 +8,8 @@ import (
 	"net/http"
 
 	// Alice package provides a light weight way to chain HTTP middleware functions.
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/justinas/alice"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 // TODO: replace with constants from the locate service repository.
@@ -74,8 +74,8 @@ func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string, 
 
 	// If the verifier is not nil, include the token limit.
 	exp := jwt.Expected{
-		Issuer:   locateIssuer,
-		Audience: jwt.Audience{machine},
+		Issuer:      locateIssuer,
+		AnyAudience: jwt.Audience{machine},
 	}
 	token, err := NewTokenController(v, tokenRequired, exp, tkEnf)
 	if err == nil {

@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/justinas/alice"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 func TestGetClaim(t *testing.T) {

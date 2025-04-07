@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/square/go-jose.v2/jwt"
+	"github.com/go-jose/go-jose/v4/jwt"
 )
 
 type fakeVerifier struct {
@@ -174,8 +174,8 @@ func TestTokenController_Limit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			exp := jwt.Expected{
-				Issuer:   tt.issuer,
-				Audience: jwt.Audience{tt.machine},
+				Issuer:      tt.issuer,
+				AnyAudience: jwt.Audience{tt.machine},
 			}
 			token, err := NewTokenController(tt.verifier, tt.required, exp, tt.expected)
 			if (err != nil) != tt.wantErr {

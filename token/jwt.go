@@ -19,6 +19,7 @@ type Verifier struct {
 // Signer is a JWT signer.
 type Signer struct {
 	jwt.Builder
+	key *jose.JSONWebKey
 }
 
 // NewSigner creates a new Signer from the given private key.
@@ -36,6 +37,7 @@ func NewSigner(key []byte) (*Signer, error) {
 
 	p := &Signer{
 		Builder: jwt.Signed(signer),
+		key:     priv,
 	}
 	return p, nil
 }
@@ -43,6 +45,13 @@ func NewSigner(key []byte) (*Signer, error) {
 // Sign signs the given claims and returns the serialized token.
 func (k *Signer) Sign(cl jwt.Claims) (string, error) {
 	return k.Builder.Claims(cl).Serialize()
+}
+
+// JWKS returns a JSON Web Key Set containing the public key for this signer
+func (s *Signer) JWKS() jose.JSONWebKeySet {
+	return jose.JSONWebKeySet{
+		Keys: []jose.JSONWebKey{s.key.Public()},
+	}
 }
 
 // NewVerifier creates a new Verifier from the given public keys.
@@ -101,20 +110,6 @@ func (k *Verifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, error) {
 	}
 	err = cl.Validate(exp)
 	return cl, err
-}
-
-// JWKS returns a JSON Web Key Set containing all public keys in the Verifier.
-func (k *Verifier) JWKS() jose.JSONWebKeySet {
-	jwks := jose.JSONWebKeySet{
-		Keys: make([]jose.JSONWebKey, 0, len(k.keys)),
-	}
-
-	for _, key := range k.keys {
-		// Ensure we only add public keys to the JWKS
-		jwks.Keys = append(jwks.Keys, key.Public())
-	}
-
-	return jwks
 }
 
 // LoadJSONWebKey loads a JSON Web Key from the given JSON data.

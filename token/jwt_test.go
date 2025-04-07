@@ -181,73 +181,37 @@ func TestLoadJSONWebKeyErrors(t *testing.T) {
 	}
 }
 
-func TestVerifier_JWKS(t *testing.T) {
-	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"1","crv":"P-256","alg":"ES256",` +
-		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
-	insecurePublicTestKey2 := `{"use":"sig","kty":"EC","kid":"2","crv":"P-256","alg":"ES256",` +
-		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
+func TestSignerJWKS(t *testing.T) {
+	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +
+		`"d":"RXSpuTicBEL5GY-76cGgRXIEOB-q4hJ0vqydEnOztIY"}`
 
-	tests := []struct {
-		name     string
-		keys     [][]byte
-		wantKids []string
-		wantErr  bool
-	}{
-		{
-			name:     "single key",
-			keys:     [][]byte{[]byte(insecurePublicTestKey)},
-			wantKids: []string{"1"},
-		},
-		{
-			name: "multiple keys",
-			keys: [][]byte{
-				[]byte(insecurePublicTestKey),
-				[]byte(insecurePublicTestKey2),
-			},
-			wantKids: []string{"1", "2"},
-		},
-		{
-			name:     "no keys",
-			keys:     [][]byte{},
-			wantKids: []string{},
-		},
+	// Create a new signer
+	s, err := NewSigner([]byte(insecurePrivateTestKey))
+	if err != nil {
+		t.Fatalf("NewSigner failed: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			v, err := NewVerifier(tt.keys...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewVerifier() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if tt.wantErr {
-				return
-			}
+	// Get the JWKS
+	jwks := s.JWKS()
 
-			jwks := v.JWKS()
+	// Verify the JWKS contains exactly one key
+	if len(jwks.Keys) != 1 {
+		t.Errorf("Expected JWKS to contain 1 key, got %d", len(jwks.Keys))
+	}
 
-			// Check that we have the expected number of keys
-			if len(jwks.Keys) != len(tt.wantKids) {
-				t.Errorf("JWKS() wrong number of keys = %v, want %v", len(jwks.Keys), len(tt.wantKids))
-			}
+	// Verify the key in JWKS is public
+	if !jwks.Keys[0].IsPublic() {
+		t.Error("Expected JWKS to contain only public key")
+	}
 
-			// Create a map of found key IDs
-			foundKids := make(map[string]bool)
-			for _, key := range jwks.Keys {
-				foundKids[key.KeyID] = true
+	// Verify the key ID matches
+	if jwks.Keys[0].KeyID != "112" {
+		t.Errorf("Expected key ID '112', got '%s'", jwks.Keys[0].KeyID)
+	}
 
-				// Verify each key is public
-				if !key.IsPublic() {
-					t.Errorf("JWKS() key %s is not public", key.KeyID)
-				}
-			}
-
-			// Verify all expected key IDs are present
-			for _, kid := range tt.wantKids {
-				if !foundKids[kid] {
-					t.Errorf("JWKS() missing key ID = %v", kid)
-				}
-			}
-		})
+	// Verify the algorithm matches
+	if jwks.Keys[0].Algorithm != "ES256" {
+		t.Errorf("Expected algorithm 'ES256', got '%s'", jwks.Keys[0].Algorithm)
 	}
 }

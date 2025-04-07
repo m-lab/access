@@ -1,3 +1,5 @@
+// Package token provides support for parsing JSON Web Keys (JWK),
+// creating signed JSON Web Tokens (JWT), and verifying JWT signatures.
 package token
 
 import (
@@ -8,15 +10,20 @@ import (
 	"github.com/go-jose/go-jose/v4/jwt"
 )
 
+// ErrKeyIDNotFound is returned when trying to verify a token when there are no
+// corresponding key IDs matching the token header.
 var ErrKeyIDNotFound = errors.New("Key ID not found for given token header")
+
+// ErrDuplicateKeyID is returned when initializing a verifier with multiple keys
+// with the same KeyID. KeyIDs should be unique.
 var ErrDuplicateKeyID = errors.New("Duplicate KeyID found")
 
-// Verifier is a JWT verifier.
+// Verifier is a JWT verifier. Requires a public JWK.
 type Verifier struct {
 	keys map[string]*jose.JSONWebKey
 }
 
-// Signer is a JWT signer.
+// Signer is a JWT signer. Requires a private JWK.
 type Signer struct {
 	jwt.Builder
 	key *jose.JSONWebKey

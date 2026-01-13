@@ -1,8 +1,6 @@
 module github.com/m-lab/access
 
-go 1.22
-
-toolchain go1.22.2
+go 1.24.0
 
 require (
 	github.com/go-jose/go-jose/v4 v4.0.5
@@ -28,7 +26,7 @@ require (
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 )

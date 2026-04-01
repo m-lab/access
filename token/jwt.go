@@ -14,6 +14,20 @@ import (
 // corresponding key IDs matching the token header.
 var ErrKeyIDNotFound = errors.New("Key ID not found for given token header")
 
+// supportedAlgorithms lists the signature algorithms accepted during token parsing.
+var supportedAlgorithms = []jose.SignatureAlgorithm{
+	jose.EdDSA,
+	jose.ES256,
+	jose.RS256,
+}
+
+// IntegrationClaims contains M-Lab integration-specific JWT claims.
+// These identify which integrator and API key were used for a request.
+type IntegrationClaims struct {
+	IntegrationID string `json:"int_id,omitempty"`
+	KeyID         string `json:"key_id,omitempty"`
+}
+
 // ErrDuplicateKeyID is returned when initializing a verifier with multiple keys
 // with the same KeyID. KeyIDs should be unique.
 var ErrDuplicateKeyID = errors.New("Duplicate KeyID found")
@@ -54,6 +68,13 @@ func (k *Signer) Sign(cl jwt.Claims) (string, error) {
 	return k.Builder.Claims(cl).Serialize()
 }
 
+// SignWithIntegrationClaims signs standard JWT claims merged with integration
+// claims into a single token. go-jose's Builder.Claims() merges multiple
+// claim objects into one JWT payload.
+func (k *Signer) SignWithIntegrationClaims(cl jwt.Claims, ic IntegrationClaims) (string, error) {
+	return k.Builder.Claims(cl).Claims(ic).Serialize()
+}
+
 // JWKS returns a JSON Web Key Set containing the public key for this signer
 func (s *Signer) JWKS() jose.JSONWebKeySet {
 	return jose.JSONWebKeySet{
@@ -87,11 +108,7 @@ func NewVerifier(keys ...[]byte) (*Verifier, error) {
 // validate them against any expected claims. Useful for extracting
 // only the claims object.
 func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
-	tok, err := jwt.ParseSigned(token, []jose.SignatureAlgorithm{
-		jose.EdDSA,
-		jose.ES256,
-		jose.RS256,
-	})
+	tok, err := jwt.ParseSigned(token, supportedAlgorithms)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +146,33 @@ func (k *Verifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, error) {
 	// for Validate() would be 1*time.Minute. This sets it to 0.
 	err = cl.ValidateWithLeeway(exp, 0)
 	return cl, err
+}
+
+// VerifyWithIntegrationClaims verifies the token and extracts both standard
+// and integration claims in a single parse pass. If the JWT does not contain
+// int_id/key_id fields, the returned IntegrationClaims will be zero-valued.
+func (k *Verifier) VerifyWithIntegrationClaims(token string, exp jwt.Expected) (*jwt.Claims, *IntegrationClaims, error) {
+	tok, err := jwt.ParseSigned(token, supportedAlgorithms)
+	if err != nil {
+		return nil, nil, err
+	}
+	headers := tok.Headers
+	if len(headers) == 0 {
+		return nil, nil, errors.New("no headers found in token")
+	}
+	keyID := headers[0].KeyID
+	pub, found := k.keys[keyID]
+	if !found {
+		return nil, nil, fmt.Errorf("%w: %s", ErrKeyIDNotFound, keyID)
+	}
+	cl := &jwt.Claims{}
+	ic := &IntegrationClaims{}
+	err = tok.Claims(pub, cl, ic)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = cl.ValidateWithLeeway(exp, 0)
+	return cl, ic, err
 }
 
 // LoadJSONWebKey loads and validates the given JWK.

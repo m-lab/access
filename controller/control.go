@@ -10,6 +10,7 @@ import (
 	// Alice package provides a light weight way to chain HTTP middleware functions.
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/justinas/alice"
+	"github.com/m-lab/access/token"
 )
 
 // TODO: replace with constants from the locate service repository.
@@ -46,6 +47,28 @@ func GetClaim(ctx context.Context) *jwt.Claims {
 		return nil
 	}
 	return value.(*jwt.Claims)
+}
+
+type integrationClaimsContextKeyType struct{}
+
+var integrationClaimsContextKey = integrationClaimsContextKeyType{}
+
+// SetIntegrationClaims returns a derived context with the given integration claims.
+func SetIntegrationClaims(ctx context.Context, ic *token.IntegrationClaims) context.Context {
+	return context.WithValue(ctx, integrationClaimsContextKey, ic)
+}
+
+// GetIntegrationClaims extracts integration claims from the given context.
+// Returns nil if no integration claims are present.
+func GetIntegrationClaims(ctx context.Context) *token.IntegrationClaims {
+	if ctx == nil {
+		return nil
+	}
+	value := ctx.Value(integrationClaimsContextKey)
+	if value == nil {
+		return nil
+	}
+	return value.(*token.IntegrationClaims)
 }
 
 // IsMonitoring reports whether (possibly nil) claim is from a monitoring issuer.

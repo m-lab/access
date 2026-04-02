@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4/jwt"
+	"github.com/m-lab/access/token"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -53,6 +54,14 @@ type TokenController struct {
 // tokens.
 type Verifier interface {
 	Verify(token string, exp jwt.Expected) (*jwt.Claims, error)
+}
+
+// IntegrationVerifier is an optional interface that token verifiers can
+// implement to extract integration-specific claims (int_id, key_id) alongside
+// standard JWT claims. When the verifier implements this interface,
+// isVerified() uses it instead of Verify() to avoid double-parsing the token.
+type IntegrationVerifier interface {
+	VerifyWithIntegrationClaims(tok string, exp jwt.Expected) (*jwt.Claims, *token.IntegrationClaims, error)
 }
 
 // NewTokenController creates a new token controller that requires tokens (or
@@ -104,7 +113,7 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	ctx := r.Context()
 	// NOTE: r.Form is not populated until calling ParseForm.
 	r.ParseForm()
-	token := r.Form.Get("access_token")
+	accessToken := r.Form.Get("access_token")
 	pathLabel := "unknown"
 	if !t.Enforced[r.URL.Path] {
 		// This path is not in the Enforced set, so accept the connection.
@@ -114,12 +123,12 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 
 	// The path is an enforced path, so copy it wholesale as a label.
 	pathLabel = r.URL.Path
-	if token == "" && !t.Required {
+	if accessToken == "" && !t.Required {
 		// The access token is missing and tokens are not requried, so accept the request.
 		tokenAccessRequests.WithLabelValues(pathLabel, "accepted", "empty").Inc()
 		return true, ctx
 	}
-	if token == "" {
+	if accessToken == "" {
 		// The access token was required but not provided.
 		tokenAccessRequests.WithLabelValues(pathLabel, "rejected", "missing").Inc()
 		return false, ctx
@@ -127,15 +136,32 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	// Attempt to verify the token.
 	exp := t.Expected
 	exp.Time = time.Now()
-	cl, err := t.Public.Verify(token, exp)
-	if err != nil {
-		// The access token was invalid; reject this request.
-		reason := strings.TrimPrefix(err.Error(), "square/go-jose/jwt: validation failed, ")
+
+	var cl *jwt.Claims
+	var verifyErr error
+
+	if iv, ok := t.Public.(IntegrationVerifier); ok {
+		var ic *token.IntegrationClaims
+		cl, ic, verifyErr = iv.VerifyWithIntegrationClaims(accessToken, exp)
+		if verifyErr == nil {
+			ctx = SetClaim(ctx, cl)
+			if ic.IntegrationID != "" || ic.KeyID != "" {
+				ctx = SetIntegrationClaims(ctx, ic)
+			}
+		}
+	} else {
+		cl, verifyErr = t.Public.Verify(accessToken, exp)
+		if verifyErr == nil {
+			ctx = SetClaim(ctx, cl)
+		}
+	}
+
+	if verifyErr != nil {
+		reason := strings.TrimPrefix(verifyErr.Error(), "square/go-jose/jwt: validation failed, ")
 		tokenAccessRequests.WithLabelValues(pathLabel, "rejected", reason).Inc()
 		return false, ctx
 	}
-	// If the claim Issuer was monitoring, set the context value so subsequent
-	// access controllers can check the context to allow monitoring reqeusts.
+
 	tokenAccessRequests.WithLabelValues(pathLabel, "accepted", cl.Issuer).Inc()
-	return true, SetClaim(ctx, cl)
+	return true, ctx
 }

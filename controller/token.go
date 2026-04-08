@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4/jwt"
-	"github.com/m-lab/access/token"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -51,17 +50,10 @@ type TokenController struct {
 }
 
 // Verifier is used by the TokenController to verify JWT claims in access
-// tokens.
+// tokens. Extra destination pointers are unmarshaled from the same JWT
+// payload (see token.Verifier.Verify).
 type Verifier interface {
-	Verify(token string, exp jwt.Expected) (*jwt.Claims, error)
-}
-
-// IntegrationVerifier is an optional interface that token verifiers can
-// implement to extract integration-specific claims (int_id, key_id) alongside
-// standard JWT claims. When the verifier implements this interface,
-// isVerified() uses it instead of Verify() to avoid double-parsing the token.
-type IntegrationVerifier interface {
-	VerifyWithIntegrationClaims(tok string, exp jwt.Expected) (*jwt.Claims, *token.IntegrationClaims, error)
+	Verify(token string, exp jwt.Expected, extraDest ...any) (*jwt.Claims, error)
 }
 
 // NewTokenController creates a new token controller that requires tokens (or
@@ -137,31 +129,18 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	exp := t.Expected
 	exp.Time = time.Now()
 
-	var cl *jwt.Claims
-	var verifyErr error
-
-	if iv, ok := t.Public.(IntegrationVerifier); ok {
-		var ic *token.IntegrationClaims
-		cl, ic, verifyErr = iv.VerifyWithIntegrationClaims(accessToken, exp)
-		if verifyErr == nil {
-			ctx = SetClaim(ctx, cl)
-			if ic.IntegrationID != "" || ic.KeyID != "" {
-				ctx = SetIntegrationClaims(ctx, ic)
-			}
-		}
-	} else {
-		cl, verifyErr = t.Public.Verify(accessToken, exp)
-		if verifyErr == nil {
-			ctx = SetClaim(ctx, cl)
-		}
-	}
-
+	ic := &IntegrationClaims{}
+	cl, verifyErr := t.Public.Verify(accessToken, exp, ic)
 	if verifyErr != nil {
-		reason := strings.TrimPrefix(verifyErr.Error(), "square/go-jose/jwt: validation failed, ")
+		reason := strings.TrimPrefix(verifyErr.Error(), "go-jose/go-jose/jwt: validation failed, ")
 		tokenAccessRequests.WithLabelValues(pathLabel, "rejected", reason).Inc()
 		return false, ctx
 	}
 
+	ctx = SetClaim(ctx, cl)
+	if ic.IntegrationID != "" || ic.KeyID != "" {
+		ctx = SetIntegrationClaims(ctx, ic)
+	}
 	tokenAccessRequests.WithLabelValues(pathLabel, "accepted", cl.Issuer).Inc()
 	return true, ctx
 }

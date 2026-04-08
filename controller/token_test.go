@@ -9,30 +9,23 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4/jwt"
-	"github.com/m-lab/access/token"
 )
 
 type fakeVerifier struct {
 	claims *jwt.Claims
+	ic     *IntegrationClaims // if non-nil, populates extra dest
 	err    error
 }
 
-func (f *fakeVerifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, error) {
+func (f *fakeVerifier) Verify(tok string, exp jwt.Expected, extraDest ...any) (*jwt.Claims, error) {
+	if f.ic != nil {
+		for _, d := range extraDest {
+			if ic, ok := d.(*IntegrationClaims); ok {
+				*ic = *f.ic
+			}
+		}
+	}
 	return f.claims, f.err
-}
-
-type fakeIntegrationVerifier struct {
-	claims *jwt.Claims
-	ic     *token.IntegrationClaims
-	err    error
-}
-
-func (f *fakeIntegrationVerifier) Verify(tok string, exp jwt.Expected) (*jwt.Claims, error) {
-	return f.claims, f.err
-}
-
-func (f *fakeIntegrationVerifier) VerifyWithIntegrationClaims(tok string, exp jwt.Expected) (*jwt.Claims, *token.IntegrationClaims, error) {
-	return f.claims, f.ic, f.err
 }
 
 func TestTokenController_Limit(t *testing.T) {
@@ -189,13 +182,13 @@ func TestTokenController_Limit(t *testing.T) {
 			name:    "success-with-integration-claims",
 			issuer:  locateIssuer,
 			machine: "mlab1.fake0",
-			verifier: &fakeIntegrationVerifier{
+			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
 					Issuer:   locateIssuer,
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
-				ic: &token.IntegrationClaims{
+				ic: &IntegrationClaims{
 					IntegrationID: "test-int",
 					KeyID:         "ki_test",
 				},
@@ -210,13 +203,12 @@ func TestTokenController_Limit(t *testing.T) {
 			name:    "success-with-empty-integration-claims",
 			issuer:  locateIssuer,
 			machine: "mlab1.fake0",
-			verifier: &fakeIntegrationVerifier{
+			verifier: &fakeVerifier{
 				claims: &jwt.Claims{
 					Issuer:   locateIssuer,
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
-				ic: &token.IntegrationClaims{},
 			},
 			required: true,
 			token:    "this-is-a-fake-token",
@@ -241,7 +233,7 @@ func TestTokenController_Limit(t *testing.T) {
 
 			visited := false
 			isMonitoring := false
-			var gotIC *token.IntegrationClaims
+			var gotIC *IntegrationClaims
 			next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 				visited = true
 				isMonitoring = IsMonitoring(GetClaim(req.Context()))

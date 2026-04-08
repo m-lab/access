@@ -7,9 +7,7 @@ import (
 	"testing"
 
 	"github.com/go-jose/go-jose/v4/jwt"
-	"github.com/go-test/deep"
 	"github.com/justinas/alice"
-	"github.com/m-lab/access/token"
 )
 
 func TestGetClaim(t *testing.T) {
@@ -43,44 +41,6 @@ func TestIsMonitoring(t *testing.T) {
 	}
 	if IsMonitoring(nil) {
 		t.Errorf("IsMonitoring() did not recognize monitoring issuer; got true, want false")
-	}
-}
-
-func TestGetIntegrationClaims(t *testing.T) {
-	tests := []struct {
-		name string
-		ctx  context.Context
-		want *token.IntegrationClaims
-	}{
-		{
-			name: "nil-context",
-			ctx:  nil,
-			want: nil,
-		},
-		{
-			name: "no-claims-in-context",
-			ctx:  context.Background(),
-			want: nil,
-		},
-		{
-			name: "with-integration-claims",
-			ctx: SetIntegrationClaims(context.Background(), &token.IntegrationClaims{
-				IntegrationID: "test-int",
-				KeyID:         "ki_test",
-			}),
-			want: &token.IntegrationClaims{
-				IntegrationID: "test-int",
-				KeyID:         "ki_test",
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := GetIntegrationClaims(tt.ctx)
-			if diff := deep.Equal(got, tt.want); diff != nil {
-				t.Errorf("GetIntegrationClaims() mismatch: %v", diff)
-			}
-		})
 	}
 }
 

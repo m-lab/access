@@ -21,13 +21,6 @@ var supportedAlgorithms = []jose.SignatureAlgorithm{
 	jose.RS256,
 }
 
-// IntegrationClaims contains M-Lab integration-specific JWT claims.
-// These identify which integrator and API key were used for a request.
-type IntegrationClaims struct {
-	IntegrationID string `json:"int_id,omitempty"`
-	KeyID         string `json:"key_id,omitempty"`
-}
-
 // ErrDuplicateKeyID is returned when initializing a verifier with multiple keys
 // with the same KeyID. KeyIDs should be unique.
 var ErrDuplicateKeyID = errors.New("Duplicate KeyID found")
@@ -39,8 +32,8 @@ type Verifier struct {
 
 // Signer is a JWT signer. Requires a private JWK.
 type Signer struct {
-	jwt.Builder
-	key *jose.JSONWebKey
+	builder jwt.Builder
+	key     *jose.JSONWebKey
 }
 
 // NewSigner accepts a serialized, private JWK and creates a new Signer instance.
@@ -49,30 +42,24 @@ func NewSigner(key []byte) (*Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	opts := &jose.SignerOptions{}
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.SignatureAlgorithm(priv.Algorithm), Key: priv}, opts)
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.SignatureAlgorithm(priv.Algorithm), Key: priv}, &jose.SignerOptions{})
 	if err != nil {
 		return nil, err
 	}
-
-	p := &Signer{
-		Builder: jwt.Signed(signer),
+	return &Signer{
+		builder: jwt.Signed(signer),
 		key:     priv,
+	}, nil
+}
+
+// Sign signs the given claims and returns the serialized token. Optional extra
+// claim objects are merged into the JWT payload via go-jose's Builder.Claims().
+func (s *Signer) Sign(cl jwt.Claims, extra ...any) (string, error) {
+	b := s.builder.Claims(cl)
+	for _, e := range extra {
+		b = b.Claims(e)
 	}
-	return p, nil
-}
-
-// Sign signs the given claims and returns the serialized token.
-func (k *Signer) Sign(cl jwt.Claims) (string, error) {
-	return k.Builder.Claims(cl).Serialize()
-}
-
-// SignWithIntegrationClaims signs standard JWT claims merged with integration
-// claims into a single token. go-jose's Builder.Claims() merges multiple
-// claim objects into one JWT payload.
-func (k *Signer) SignWithIntegrationClaims(cl jwt.Claims, ic IntegrationClaims) (string, error) {
-	return k.Builder.Claims(cl).Claims(ic).Serialize()
+	return b.Serialize()
 }
 
 // JWKS returns a JSON Web Key Set containing the public key for this signer
@@ -146,33 +133,6 @@ func (k *Verifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, error) {
 	// for Validate() would be 1*time.Minute. This sets it to 0.
 	err = cl.ValidateWithLeeway(exp, 0)
 	return cl, err
-}
-
-// VerifyWithIntegrationClaims verifies the token and extracts both standard
-// and integration claims in a single parse pass. If the JWT does not contain
-// int_id/key_id fields, the returned IntegrationClaims will be zero-valued.
-func (k *Verifier) VerifyWithIntegrationClaims(token string, exp jwt.Expected) (*jwt.Claims, *IntegrationClaims, error) {
-	tok, err := jwt.ParseSigned(token, supportedAlgorithms)
-	if err != nil {
-		return nil, nil, err
-	}
-	headers := tok.Headers
-	if len(headers) == 0 {
-		return nil, nil, errors.New("no headers found in token")
-	}
-	keyID := headers[0].KeyID
-	pub, found := k.keys[keyID]
-	if !found {
-		return nil, nil, fmt.Errorf("%w: %s", ErrKeyIDNotFound, keyID)
-	}
-	cl := &jwt.Claims{}
-	ic := &IntegrationClaims{}
-	err = tok.Claims(pub, cl, ic)
-	if err != nil {
-		return nil, nil, err
-	}
-	err = cl.ValidateWithLeeway(exp, 0)
-	return cl, ic, err
 }
 
 // LoadJSONWebKey loads and validates the given JWK.

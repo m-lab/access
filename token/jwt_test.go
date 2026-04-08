@@ -181,12 +181,15 @@ func TestLoadJSONWebKeyErrors(t *testing.T) {
 	}
 }
 
-func TestSignWithIntegrationClaims(t *testing.T) {
+func TestSignWithExtraClaims(t *testing.T) {
 	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
 		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +
 		`"d":"RXSpuTicBEL5GY-76cGgRXIEOB-q4hJ0vqydEnOztIY"}`
-	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
-		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
+
+	type customClaims struct {
+		Scope string `json:"scope,omitempty"`
+		Role  string `json:"role,omitempty"`
+	}
 
 	s, err := NewSigner([]byte(insecurePrivateTestKey))
 	if err != nil {
@@ -198,89 +201,24 @@ func TestSignWithIntegrationClaims(t *testing.T) {
 		Audience: jwt.Audience{"mlab1.fake0"},
 		Expiry:   jwt.NewNumericDate(time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC)),
 	}
-	ic := IntegrationClaims{
-		IntegrationID: "test-integration",
-		KeyID:         "ki_abc123",
-	}
+	extra := customClaims{Scope: "read", Role: "admin"}
 
-	token, err := s.SignWithIntegrationClaims(cl, ic)
+	// Sign with extra claims.
+	token, err := s.Sign(cl, extra)
 	if err != nil {
-		t.Fatalf("SignWithIntegrationClaims failed: %v", err)
+		t.Fatalf("Sign with extra claims failed: %v", err)
 	}
 	if token == "" {
-		t.Fatal("SignWithIntegrationClaims returned empty token")
+		t.Fatal("Sign returned empty token")
 	}
 
-	// Verify the token contains integration claims by parsing it back.
-	v, err := NewVerifier([]byte(insecurePublicTestKey))
+	// Sign without extra claims still works.
+	token2, err := s.Sign(cl)
 	if err != nil {
-		t.Fatalf("NewVerifier failed: %v", err)
+		t.Fatalf("Sign without extra claims failed: %v", err)
 	}
-	exp := jwt.Expected{
-		Issuer:      "locate",
-		AnyAudience: jwt.Audience{"mlab1.fake0"},
-		Time:        time.Date(2029, time.December, 31, 0, 0, 0, 0, time.UTC),
-	}
-	verifiedCl, verifiedIC, err := v.VerifyWithIntegrationClaims(token, exp)
-	if err != nil {
-		t.Fatalf("VerifyWithIntegrationClaims failed: %v", err)
-	}
-	if verifiedCl.Issuer != "locate" {
-		t.Errorf("Expected issuer 'locate', got %q", verifiedCl.Issuer)
-	}
-	if verifiedIC.IntegrationID != "test-integration" {
-		t.Errorf("Expected int_id 'test-integration', got %q", verifiedIC.IntegrationID)
-	}
-	if verifiedIC.KeyID != "ki_abc123" {
-		t.Errorf("Expected key_id 'ki_abc123', got %q", verifiedIC.KeyID)
-	}
-}
-
-func TestVerifyWithIntegrationClaims_NoIntegrationClaims(t *testing.T) {
-	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
-		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +
-		`"d":"RXSpuTicBEL5GY-76cGgRXIEOB-q4hJ0vqydEnOztIY"}`
-	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
-		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
-
-	s, err := NewSigner([]byte(insecurePrivateTestKey))
-	if err != nil {
-		t.Fatalf("NewSigner failed: %v", err)
-	}
-
-	// Sign with standard claims only (no integration claims).
-	cl := jwt.Claims{
-		Issuer:   "locate",
-		Audience: jwt.Audience{"mlab1.fake0"},
-		Expiry:   jwt.NewNumericDate(time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC)),
-	}
-	token, err := s.Sign(cl)
-	if err != nil {
-		t.Fatalf("Sign failed: %v", err)
-	}
-
-	// VerifyWithIntegrationClaims should succeed with empty integration claims.
-	v, err := NewVerifier([]byte(insecurePublicTestKey))
-	if err != nil {
-		t.Fatalf("NewVerifier failed: %v", err)
-	}
-	exp := jwt.Expected{
-		Issuer:      "locate",
-		AnyAudience: jwt.Audience{"mlab1.fake0"},
-		Time:        time.Date(2029, time.December, 31, 0, 0, 0, 0, time.UTC),
-	}
-	verifiedCl, verifiedIC, err := v.VerifyWithIntegrationClaims(token, exp)
-	if err != nil {
-		t.Fatalf("VerifyWithIntegrationClaims failed: %v", err)
-	}
-	if verifiedCl.Issuer != "locate" {
-		t.Errorf("Expected issuer 'locate', got %q", verifiedCl.Issuer)
-	}
-	if verifiedIC.IntegrationID != "" {
-		t.Errorf("Expected empty int_id, got %q", verifiedIC.IntegrationID)
-	}
-	if verifiedIC.KeyID != "" {
-		t.Errorf("Expected empty key_id, got %q", verifiedIC.KeyID)
+	if token2 == "" {
+		t.Fatal("Sign returned empty token")
 	}
 }
 

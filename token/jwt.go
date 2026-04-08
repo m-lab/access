@@ -91,42 +91,56 @@ func NewVerifier(keys ...[]byte) (*Verifier, error) {
 	}, nil
 }
 
-// Claims extracts the claims from a signed token, but does not
-// validate them against any expected claims. Useful for extracting
-// only the claims object.
-func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
+// parsedToken parses a signed token string and resolves the signing key.
+func (k *Verifier) parsedToken(token string) (*jwt.JSONWebToken, *jose.JSONWebKey, error) {
 	tok, err := jwt.ParseSigned(token, supportedAlgorithms)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
 	headers := tok.Headers
 	if len(headers) == 0 {
-		return nil, errors.New("no headers found in token")
+		return nil, nil, errors.New("no headers found in token")
 	}
-
 	// Note: We will not support tokens with multiple signatures/headers.
 	keyID := headers[0].KeyID
 	pub, found := k.keys[keyID]
 	if !found {
-		return nil, fmt.Errorf("%w: %s", ErrKeyIDNotFound, keyID)
+		return nil, nil, fmt.Errorf("%w: %s", ErrKeyIDNotFound, keyID)
 	}
+	return tok, pub, nil
+}
 
-	// Claims validates the jwt signature before extracting the token claims.
-	cl := &jwt.Claims{}
-	err = tok.Claims(pub, cl)
+// Claims extracts the claims from a signed token, but does not
+// validate them against any expected claims. Useful for extracting
+// only the claims object.
+func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
+	tok, pub, err := k.parsedToken(token)
 	if err != nil {
+		return nil, err
+	}
+	cl := &jwt.Claims{}
+	if err := tok.Claims(pub, cl); err != nil {
 		return nil, err
 	}
 	return cl, nil
 }
 
-// Verify checks the token signature and that the claims match the expected
-// config. Note: if validation of the expected claims fails, then Verify will
-// return the original token claims with the corresponding non-nil validation error.
-func (k *Verifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, error) {
-	cl, err := k.Claims(token)
+// Verify checks the token signature and validates claims against expected
+// values. Extra destination pointers are unmarshaled from the same JWT payload
+// via go-jose's variadic Claims support. For example:
+//
+//	var custom MyCustomClaims
+//	cl, err := v.Verify(token, expected, &custom)
+func (k *Verifier) Verify(token string, exp jwt.Expected, extraDest ...any) (*jwt.Claims, error) {
+	tok, pub, err := k.parsedToken(token)
 	if err != nil {
+		return nil, err
+	}
+	cl := &jwt.Claims{}
+	dest := make([]any, 0, 1+len(extraDest))
+	dest = append(dest, cl)
+	dest = append(dest, extraDest...)
+	if err := tok.Claims(pub, dest...); err != nil {
 		return nil, err
 	}
 	// Verify that the expected claims satisfy the signed claims. Default leeway

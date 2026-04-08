@@ -222,6 +222,70 @@ func TestSignWithExtraClaims(t *testing.T) {
 	}
 }
 
+func TestVerifyWithExtraClaims(t *testing.T) {
+	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +
+		`"d":"RXSpuTicBEL5GY-76cGgRXIEOB-q4hJ0vqydEnOztIY"}`
+	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
+
+	type customClaims struct {
+		Scope string `json:"scope,omitempty"`
+		Role  string `json:"role,omitempty"`
+	}
+
+	s, err := NewSigner([]byte(insecurePrivateTestKey))
+	if err != nil {
+		t.Fatalf("NewSigner failed: %v", err)
+	}
+	v, err := NewVerifier([]byte(insecurePublicTestKey))
+	if err != nil {
+		t.Fatalf("NewVerifier failed: %v", err)
+	}
+
+	cl := jwt.Claims{
+		Issuer:   "locate",
+		Audience: jwt.Audience{"mlab1.fake0"},
+		Expiry:   jwt.NewNumericDate(time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC)),
+	}
+	extra := customClaims{Scope: "read", Role: "admin"}
+
+	tok, err := s.Sign(cl, extra)
+	if err != nil {
+		t.Fatalf("Sign failed: %v", err)
+	}
+
+	// Verify with extra destination.
+	exp := jwt.Expected{
+		Issuer:      "locate",
+		AnyAudience: jwt.Audience{"mlab1.fake0"},
+		Time:        time.Date(2029, time.December, 31, 0, 0, 0, 0, time.UTC),
+	}
+	var got customClaims
+	verified, err := v.Verify(tok, exp, &got)
+	if err != nil {
+		t.Fatalf("Verify failed: %v", err)
+	}
+	if verified.Issuer != "locate" {
+		t.Errorf("Expected issuer 'locate', got %q", verified.Issuer)
+	}
+	if got.Scope != "read" {
+		t.Errorf("Expected scope 'read', got %q", got.Scope)
+	}
+	if got.Role != "admin" {
+		t.Errorf("Expected role 'admin', got %q", got.Role)
+	}
+
+	// Verify without extra destination still works.
+	verified2, err := v.Verify(tok, exp)
+	if err != nil {
+		t.Fatalf("Verify without extra failed: %v", err)
+	}
+	if verified2.Issuer != "locate" {
+		t.Errorf("Expected issuer 'locate', got %q", verified2.Issuer)
+	}
+}
+
 func TestSignerJWKS(t *testing.T) {
 	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
 		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +

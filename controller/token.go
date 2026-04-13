@@ -100,7 +100,9 @@ func (t *TokenController) Limit(next http.Handler) http.Handler {
 // isVerified validates the client-provided access_token. If the access_token is
 // not found and tokens are not required, the request will be accepted. If the
 // token is valid, then the returned context will include a boolean value
-// indicating whether the token issuer is "monitoring" or not.
+// indicating whether the token issuer is "monitoring" or not. When the token
+// carries non-empty integration claims, they are also attached to the context
+// via SetIntegrationClaims.
 func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	ctx := r.Context()
 	// NOTE: r.Form is not populated until calling ParseForm.

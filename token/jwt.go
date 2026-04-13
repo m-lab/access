@@ -131,6 +131,9 @@ func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 //
 //	var custom MyCustomClaims
 //	cl, err := v.Verify(token, expected, &custom)
+//
+// If parsing succeeds but expected-claims validation fails, Verify returns the
+// parsed claims along with the non-nil validation error.
 func (k *Verifier) Verify(token string, exp jwt.Expected, extraDest ...any) (*jwt.Claims, error) {
 	tok, pub, err := k.parsedToken(token)
 	if err != nil {

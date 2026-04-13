@@ -2,31 +2,23 @@ package controller
 
 import "context"
 
-// IntegrationClaims contains M-Lab integration-specific JWT claims.
-// These identify which integrator and API key were used for a request.
-type IntegrationClaims struct {
-	IntegrationID string `json:"int_id,omitempty"`
-	KeyID         string `json:"key_id,omitempty"`
+type customClaimContextKeyType struct{}
+
+var customClaimContextKey = customClaimContextKeyType{}
+
+// SetCustomClaim returns a derived context carrying the given caller-defined
+// claim value. The value is typically a pointer to a struct populated by
+// Verifier.Verify via its variadic destination argument.
+func SetCustomClaim(ctx context.Context, v any) context.Context {
+	return context.WithValue(ctx, customClaimContextKey, v)
 }
 
-type integrationClaimsContextKeyType struct{}
-
-var integrationClaimsContextKey = integrationClaimsContextKeyType{}
-
-// SetIntegrationClaims returns a derived context with the given integration claims.
-func SetIntegrationClaims(ctx context.Context, ic *IntegrationClaims) context.Context {
-	return context.WithValue(ctx, integrationClaimsContextKey, ic)
-}
-
-// GetIntegrationClaims extracts integration claims from the given context.
-// Returns nil if no integration claims are present.
-func GetIntegrationClaims(ctx context.Context) *IntegrationClaims {
+// GetCustomClaim returns the caller-defined claim value previously stored via
+// SetCustomClaim, or nil if none is present. Callers are expected to type
+// assert the returned value to their own claim type.
+func GetCustomClaim(ctx context.Context) any {
 	if ctx == nil {
 		return nil
 	}
-	value := ctx.Value(integrationClaimsContextKey)
-	if value == nil {
-		return nil
-	}
-	return value.(*IntegrationClaims)
+	return ctx.Value(customClaimContextKey)
 }

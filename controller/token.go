@@ -47,6 +47,13 @@ type TokenController struct {
 	// TokenController will enforce token authorization. Any resource missing
 	// from the Enforced set is allowed.
 	Enforced Paths
+
+	// NewCustomClaim, if non-nil, is called per request to allocate a
+	// destination for caller-defined JWT claims. The returned pointer is
+	// passed to Verifier.Verify; on successful verification it is attached
+	// to the request context via SetCustomClaim so downstream handlers can
+	// retrieve it with GetCustomClaim.
+	NewCustomClaim func() any
 }
 
 // Verifier is used by the TokenController to verify JWT claims in access
@@ -100,9 +107,9 @@ func (t *TokenController) Limit(next http.Handler) http.Handler {
 // isVerified validates the client-provided access_token. If the access_token is
 // not found and tokens are not required, the request will be accepted. If the
 // token is valid, then the returned context will include a boolean value
-// indicating whether the token issuer is "monitoring" or not. When the token
-// carries non-empty integration claims, they are also attached to the context
-// via SetIntegrationClaims.
+// indicating whether the token issuer is "monitoring" or not. When
+// NewCustomClaim is set, the populated custom claim value is also attached to
+// the context via SetCustomClaim.
 func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	ctx := r.Context()
 	// NOTE: r.Form is not populated until calling ParseForm.
@@ -131,8 +138,13 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	exp := t.Expected
 	exp.Time = time.Now()
 
-	ic := &IntegrationClaims{}
-	cl, verifyErr := t.Public.Verify(accessToken, exp, ic)
+	var custom any
+	var extraDest []any
+	if t.NewCustomClaim != nil {
+		custom = t.NewCustomClaim()
+		extraDest = []any{custom}
+	}
+	cl, verifyErr := t.Public.Verify(accessToken, exp, extraDest...)
 	if verifyErr != nil {
 		reason := strings.TrimPrefix(verifyErr.Error(), "go-jose/go-jose/jwt: validation failed, ")
 		tokenAccessRequests.WithLabelValues(pathLabel, "rejected", reason).Inc()
@@ -140,8 +152,8 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	}
 
 	ctx = SetClaim(ctx, cl)
-	if ic.IntegrationID != "" || ic.KeyID != "" {
-		ctx = SetIntegrationClaims(ctx, ic)
+	if custom != nil {
+		ctx = SetCustomClaim(ctx, custom)
 	}
 	tokenAccessRequests.WithLabelValues(pathLabel, "accepted", cl.Issuer).Inc()
 	return true, ctx

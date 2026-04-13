@@ -9,19 +9,27 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4/jwt"
+	"github.com/go-test/deep"
 )
+
+// testCustomClaims is a sample caller-defined claim type used to exercise the
+// generic NewCustomClaim/SetCustomClaim/GetCustomClaim machinery.
+type testCustomClaims struct {
+	Foo string
+	Bar string
+}
 
 type fakeVerifier struct {
 	claims *jwt.Claims
-	ic     *IntegrationClaims // if non-nil, populates extra dest
+	custom *testCustomClaims // if non-nil, populates extra dest
 	err    error
 }
 
 func (f *fakeVerifier) Verify(tok string, exp jwt.Expected, extraDest ...any) (*jwt.Claims, error) {
-	if f.ic != nil {
+	if f.custom != nil {
 		for _, d := range extraDest {
-			if ic, ok := d.(*IntegrationClaims); ok {
-				*ic = *f.ic
+			if c, ok := d.(*testCustomClaims); ok {
+				*c = *f.custom
 			}
 		}
 	}
@@ -41,6 +49,8 @@ func TestTokenController_Limit(t *testing.T) {
 		monitoring bool
 		expected   Paths
 		wantErr    bool
+		newCustom  func() any
+		wantCustom any
 	}{
 		{
 			name:    "success-without-token",
@@ -179,7 +189,7 @@ func TestTokenController_Limit(t *testing.T) {
 			wantErr:  true,
 		},
 		{
-			name:    "success-with-integration-claims",
+			name:    "success-with-custom-claim",
 			issuer:  locateIssuer,
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
@@ -188,19 +198,18 @@ func TestTokenController_Limit(t *testing.T) {
 					Audience: []string{"mlab1.fake0"},
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
-				ic: &IntegrationClaims{
-					IntegrationID: "test-int",
-					KeyID:         "ki_test",
-				},
+				custom: &testCustomClaims{Foo: "f", Bar: "b"},
 			},
-			required: true,
-			token:    "this-is-a-fake-token",
-			code:     http.StatusOK,
-			visited:  true,
-			expected: Paths{"/": true},
+			required:   true,
+			token:      "this-is-a-fake-token",
+			code:       http.StatusOK,
+			visited:    true,
+			expected:   Paths{"/": true},
+			newCustom:  func() any { return &testCustomClaims{} },
+			wantCustom: &testCustomClaims{Foo: "f", Bar: "b"},
 		},
 		{
-			name:    "success-with-empty-integration-claims",
+			name:    "success-with-zero-custom-claim",
 			issuer:  locateIssuer,
 			machine: "mlab1.fake0",
 			verifier: &fakeVerifier{
@@ -210,11 +219,13 @@ func TestTokenController_Limit(t *testing.T) {
 					Expiry:   jwt.NewNumericDate(time.Now()),
 				},
 			},
-			required: true,
-			token:    "this-is-a-fake-token",
-			code:     http.StatusOK,
-			visited:  true,
-			expected: Paths{"/": true},
+			required:   true,
+			token:      "this-is-a-fake-token",
+			code:       http.StatusOK,
+			visited:    true,
+			expected:   Paths{"/": true},
+			newCustom:  func() any { return &testCustomClaims{} },
+			wantCustom: &testCustomClaims{},
 		},
 	}
 	for _, tt := range tests {
@@ -230,14 +241,15 @@ func TestTokenController_Limit(t *testing.T) {
 			if tt.wantErr {
 				return
 			}
+			tc.NewCustomClaim = tt.newCustom
 
 			visited := false
 			isMonitoring := false
-			var gotIC *IntegrationClaims
+			var gotCustom any
 			next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 				visited = true
 				isMonitoring = IsMonitoring(GetClaim(req.Context()))
-				gotIC = GetIntegrationClaims(req.Context())
+				gotCustom = GetCustomClaim(req.Context())
 			})
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Form = url.Values{}
@@ -257,22 +269,8 @@ func TestTokenController_Limit(t *testing.T) {
 			if isMonitoring != tt.monitoring {
 				t.Errorf("TokenController.Limit() monitoring is wrong; got %t, want %t", isMonitoring, tt.monitoring)
 			}
-			if tt.name == "success-with-integration-claims" {
-				if gotIC == nil {
-					t.Error("Expected integration claims in context, got nil")
-				} else {
-					if gotIC.IntegrationID != "test-int" {
-						t.Errorf("Expected int_id 'test-int', got %q", gotIC.IntegrationID)
-					}
-					if gotIC.KeyID != "ki_test" {
-						t.Errorf("Expected key_id 'ki_test', got %q", gotIC.KeyID)
-					}
-				}
-			}
-			if tt.name == "success-with-empty-integration-claims" {
-				if gotIC != nil {
-					t.Errorf("Expected no integration claims for empty claims, got %+v", gotIC)
-				}
+			if diff := deep.Equal(gotCustom, tt.wantCustom); diff != nil {
+				t.Errorf("TokenController.Limit() custom claim mismatch: %v", diff)
 			}
 		})
 	}

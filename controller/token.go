@@ -49,9 +49,11 @@ type TokenController struct {
 	Enforced Paths
 
 	// NewCustomClaim, if non-nil, is called per request to allocate a
-	// destination for caller-defined JWT claims. The returned pointer is
-	// passed to Verifier.Verify; on successful verification it is attached
-	// to the request context via SetCustomClaim so downstream handlers can
+	// destination for caller-defined JWT claims. It must return a non-nil
+	// pointer to a JSON-decodable struct, or nil to skip custom claim
+	// extraction for this request. The returned pointer is passed to
+	// Verifier.Verify; on successful verification it is attached to the
+	// request context via SetCustomClaim so downstream handlers can
 	// retrieve it with GetCustomClaim.
 	NewCustomClaim func() any
 }
@@ -141,8 +143,10 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	var custom any
 	var extraDest []any
 	if t.NewCustomClaim != nil {
-		custom = t.NewCustomClaim()
-		extraDest = []any{custom}
+		if c := t.NewCustomClaim(); c != nil {
+			custom = c
+			extraDest = []any{c}
+		}
 	}
 	cl, verifyErr := t.Public.Verify(accessToken, exp, extraDest...)
 	if verifyErr != nil {

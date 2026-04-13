@@ -227,6 +227,28 @@ func TestTokenController_Limit(t *testing.T) {
 			newCustom:  func() any { return &testCustomClaims{} },
 			wantCustom: &testCustomClaims{},
 		},
+		{
+			// NewCustomClaim returning nil must be tolerated and must NOT
+			// cause the request to be rejected (no extra dest is sent to
+			// Verify, and no value is attached to the context).
+			name:    "success-with-nil-custom-claim",
+			issuer:  locateIssuer,
+			machine: "mlab1.fake0",
+			verifier: &fakeVerifier{
+				claims: &jwt.Claims{
+					Issuer:   locateIssuer,
+					Audience: []string{"mlab1.fake0"},
+					Expiry:   jwt.NewNumericDate(time.Now()),
+				},
+			},
+			required:   true,
+			token:      "this-is-a-fake-token",
+			code:       http.StatusOK,
+			visited:    true,
+			expected:   Paths{"/": true},
+			newCustom:  func() any { return nil },
+			wantCustom: nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

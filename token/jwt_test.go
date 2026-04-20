@@ -222,6 +222,70 @@ func TestSignWithExtraClaims(t *testing.T) {
 	}
 }
 
+// TestSignExtraClaimsCannotOverrideStandard asserts that a caller-supplied
+// extra claim struct whose JSON tags collide with standard jwt.Claims keys
+// (iss, aud, sub) cannot overwrite the values set via the standard claims
+// argument: the standard claims must win.
+func TestSignExtraClaimsCannotOverrideStandard(t *testing.T) {
+	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +
+		`"d":"RXSpuTicBEL5GY-76cGgRXIEOB-q4hJ0vqydEnOztIY"}`
+	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
+
+	type collider struct {
+		Iss string `json:"iss"`
+		Aud string `json:"aud"`
+		Sub string `json:"sub"`
+	}
+
+	s, err := NewSigner([]byte(insecurePrivateTestKey))
+	if err != nil {
+		t.Fatalf("NewSigner failed: %v", err)
+	}
+	v, err := NewVerifier([]byte(insecurePublicTestKey))
+	if err != nil {
+		t.Fatalf("NewVerifier failed: %v", err)
+	}
+
+	cl := jwt.Claims{
+		Issuer:   "standard-iss",
+		Audience: jwt.Audience{"standard-aud"},
+		Subject:  "standard-sub",
+		Expiry:   jwt.NewNumericDate(time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC)),
+	}
+	bad := collider{
+		Iss: "attacker-iss",
+		Aud: "attacker-aud",
+		Sub: "attacker-sub",
+	}
+
+	tok, err := s.Sign(cl, bad)
+	if err != nil {
+		t.Fatalf("Sign failed: %v", err)
+	}
+
+	exp := jwt.Expected{
+		Issuer:      "standard-iss",
+		AnyAudience: jwt.Audience{"standard-aud"},
+		Subject:     "standard-sub",
+		Time:        time.Date(2029, time.December, 31, 0, 0, 0, 0, time.UTC),
+	}
+	verified, err := v.Verify(tok, exp)
+	if err != nil {
+		t.Fatalf("Verify rejected token whose standard claims should have won: %v", err)
+	}
+	if verified.Issuer != "standard-iss" {
+		t.Errorf("Issuer: got %q, want %q", verified.Issuer, "standard-iss")
+	}
+	if len(verified.Audience) != 1 || verified.Audience[0] != "standard-aud" {
+		t.Errorf("Audience: got %v, want [standard-aud]", verified.Audience)
+	}
+	if verified.Subject != "standard-sub" {
+		t.Errorf("Subject: got %q, want %q", verified.Subject, "standard-sub")
+	}
+}
+
 func TestVerifyWithExtraClaims(t *testing.T) {
 	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
 		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +

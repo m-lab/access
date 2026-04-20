@@ -54,12 +54,15 @@ func NewSigner(key []byte) (*Signer, error) {
 
 // Sign signs the given claims and returns the serialized token. Optional extra
 // claim objects are merged into the JWT payload via go-jose's Builder.Claims().
+// If a field in extra serializes to a JSON key that is also set by cl, the
+// standard claim wins: extras are applied first and cl last, so go-jose's
+// later-wins merge semantics make cl authoritative.
 func (s *Signer) Sign(cl jwt.Claims, extra ...any) (string, error) {
-	b := s.builder.Claims(cl)
+	b := s.builder
 	for _, e := range extra {
 		b = b.Claims(e)
 	}
-	return b.Serialize()
+	return b.Claims(cl).Serialize()
 }
 
 // JWKS returns a JSON Web Key Set containing the public key for this signer

@@ -129,15 +129,19 @@ func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 	return cl, nil
 }
 
-// Verify checks the token signature and validates claims against expected
-// values. Extra destination pointers are unmarshaled from the same JWT payload
-// via go-jose's variadic Claims support. For example:
+// Verify authenticates the token signature and policy-checks the standard
+// jwt.Claims against exp (iss, aud, exp, nbf, sub). Extra destination
+// pointers are unmarshaled from the same JWT payload via go-jose's variadic
+// Claims support. For example:
 //
 //	var custom MyCustomClaims
 //	cl, err := v.Verify(token, expected, &custom)
 //
-// If parsing succeeds but expected-claims validation fails, Verify returns the
-// parsed claims along with the non-nil validation error.
+// Fields in extraDest are JSON-unmarshaled only; no value-level check is
+// performed on them, that's the caller's responsibility.
+//
+// If parsing succeeds but expected-claims validation fails, Verify returns
+// the parsed claims along with the non-nil validation error.
 func (k *Verifier) Verify(token string, exp jwt.Expected, extraDest ...any) (*jwt.Claims, error) {
 	tok, pub, err := k.parsedToken(token)
 	if err != nil {

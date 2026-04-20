@@ -52,9 +52,14 @@ type TokenController struct {
 	// destination for caller-defined JWT claims. It must return a non-nil
 	// pointer to a JSON-decodable struct, or nil to skip custom claim
 	// extraction for this request. The returned pointer is passed to
-	// Verifier.Verify; on successful verification it is attached to the
-	// request context via SetCustomClaim so downstream handlers can
-	// retrieve it with GetCustomClaim.
+	// Verifier.Verify. On successful signature authentication and
+	// standard-claim policy check, it is attached to the request context
+	// via SetCustomClaim so downstream handlers can retrieve it with
+	// GetCustomClaim.
+	//
+	// Callers are responsible for validating the contents of the custom
+	// struct (e.g., scope or role fields) in their downstream handler;
+	// this hook performs no value-level policy check on custom fields.
 	NewCustomClaim func() any
 }
 

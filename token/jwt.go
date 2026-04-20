@@ -113,9 +113,10 @@ func (k *Verifier) parsedToken(token string) (*jwt.JSONWebToken, *jose.JSONWebKe
 	return tok, pub, nil
 }
 
-// Claims extracts the claims from a signed token, but does not
-// validate them against any expected claims. Useful for extracting
-// only the claims object.
+// Claims extracts the standard JWT claims from a signed token. It fails on
+// signature mismatch (or missing/unknown key ID); otherwise it returns the
+// claims as-is. The claim values are not validated against any jwt.Expected,
+// that's the caller's responsibility.
 func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
 	tok, pub, err := k.parsedToken(token)
 	if err != nil {

@@ -56,6 +56,21 @@ func IsMonitoring(cl *jwt.Claims) bool {
 	return cl.Subject == monitorSubject
 }
 
+// SetupOption configures optional behavior for Setup.
+type SetupOption func(*setupConfig)
+
+type setupConfig struct {
+	newCustomClaim func() any
+}
+
+// WithCustomClaim configures Setup to install a NewCustomClaim factory on the
+// TokenController it builds. The factory is invoked per request to allocate a
+// destination struct for caller-defined JWT claims. See
+// TokenController.NewCustomClaim for the full contract.
+func WithCustomClaim(factory func() any) SetupOption {
+	return func(c *setupConfig) { c.newCustomClaim = factory }
+}
+
 // Setup creates a sequence of access control http.Handlers. When the verifier
 // is nil then the token controller will be excluded from the returned handler
 // chain. When the tx controller is unconfigured then the tx controller will be
@@ -63,8 +78,14 @@ func IsMonitoring(cl *jwt.Claims) bool {
 // because it provides the Accepter interface for use by servers accepting raw
 // TCP connections. See TxController.Accept for more information. When
 // tokenRequired is true, then the token controller requires valid access tokens
-// for the named machine.
-func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string, txEnf, tkEnf Paths) (alice.Chain, *TxController) {
+// for the named machine. Optional SetupOptions configure extensions such as
+// custom JWT claim extraction; see WithCustomClaim.
+func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string, txEnf, tkEnf Paths, opts ...SetupOption) (alice.Chain, *TxController) {
+	cfg := setupConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	// Controllers must be applied in specific order so that the tx controller
 	// can access the access token claims (if present) to identify monitoring
 	// requests. When token validation is successful, the validated claims are
@@ -79,6 +100,9 @@ func Setup(ctx context.Context, v Verifier, tokenRequired bool, machine string, 
 	}
 	token, err := NewTokenController(v, tokenRequired, exp, tkEnf)
 	if err == nil {
+		if cfg.newCustomClaim != nil {
+			token.NewCustomClaim = cfg.newCustomClaim
+		}
 		ac = ac.Append(token.Limit)
 	} else {
 		log.Printf("WARNING: token controller is disabled: %v", err)

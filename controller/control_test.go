@@ -4,9 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 
 	"github.com/go-jose/go-jose/v4/jwt"
+	"github.com/go-test/deep"
 	"github.com/justinas/alice"
 )
 
@@ -97,5 +100,42 @@ func TestSetupDefault(t *testing.T) {
 				t.Errorf("Setup() Then() not visited; got false, want true")
 			}
 		})
+	}
+}
+
+func TestSetupWithCustomClaim(t *testing.T) {
+	procPath = "testdata/proc-success"
+	device = "eth0"
+	machine := "mlab1.foo01"
+	enforced := Paths{"/": true}
+	verifier := &fakeVerifier{
+		claims: &jwt.Claims{
+			Issuer:   locateIssuer,
+			Audience: jwt.Audience{machine},
+			Expiry:   jwt.NewNumericDate(time.Now().Add(time.Minute)),
+		},
+		custom: &testCustomClaims{Foo: "f", Bar: "b"},
+	}
+
+	ac, _ := Setup(context.Background(), verifier, true, machine, enforced, enforced,
+		WithCustomClaim(func() any { return &testCustomClaims{} }),
+	)
+
+	var gotCustom any
+	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		gotCustom = GetCustomClaim(req.Context())
+	})
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Form = url.Values{"access_token": {"fake-token"}}
+	rw := httptest.NewRecorder()
+
+	ac.Then(next).ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Errorf("Setup() with custom claim wrong http code; got %d, want %d", rw.Code, http.StatusOK)
+	}
+	want := &testCustomClaims{Foo: "f", Bar: "b"}
+	if diff := deep.Equal(gotCustom, want); diff != nil {
+		t.Errorf("Setup() with custom claim mismatch: %v", diff)
 	}
 }

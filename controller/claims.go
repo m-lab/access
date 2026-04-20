@@ -17,8 +17,5 @@ func SetCustomClaim(ctx context.Context, v any) context.Context {
 // SetCustomClaim, or nil if none is present. Callers are expected to type
 // assert the returned value to their own claim type.
 func GetCustomClaim(ctx context.Context) any {
-	if ctx == nil {
-		return nil
-	}
 	return ctx.Value(customClaimContextKey)
 }

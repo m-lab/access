@@ -18,11 +18,6 @@ func TestGetCustomClaim(t *testing.T) {
 		want any
 	}{
 		{
-			name: "nil-context",
-			ctx:  nil,
-			want: nil,
-		},
-		{
 			name: "no-claim-in-context",
 			ctx:  context.Background(),
 			want: nil,

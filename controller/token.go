@@ -47,12 +47,27 @@ type TokenController struct {
 	// TokenController will enforce token authorization. Any resource missing
 	// from the Enforced set is allowed.
 	Enforced Paths
+
+	// NewCustomClaim, if non-nil, is called per request to allocate a
+	// destination for caller-defined JWT claims. It must return a non-nil
+	// pointer to a JSON-decodable struct, or nil to skip custom claim
+	// extraction for this request. The returned pointer is passed to
+	// Verifier.Verify. On successful signature authentication and
+	// standard-claim policy check, it is attached to the request context
+	// via SetCustomClaim so downstream handlers can retrieve it with
+	// GetCustomClaim.
+	//
+	// Callers are responsible for validating the contents of the custom
+	// struct (e.g., scope or role fields) in their downstream handler;
+	// this hook performs no value-level policy check on custom fields.
+	NewCustomClaim func() any
 }
 
 // Verifier is used by the TokenController to verify JWT claims in access
-// tokens.
+// tokens. Extra destination pointers are unmarshaled from the same JWT
+// payload (see token.Verifier.Verify).
 type Verifier interface {
-	Verify(token string, exp jwt.Expected) (*jwt.Claims, error)
+	Verify(token string, exp jwt.Expected, extraDest ...any) (*jwt.Claims, error)
 }
 
 // NewTokenController creates a new token controller that requires tokens (or
@@ -99,12 +114,14 @@ func (t *TokenController) Limit(next http.Handler) http.Handler {
 // isVerified validates the client-provided access_token. If the access_token is
 // not found and tokens are not required, the request will be accepted. If the
 // token is valid, then the returned context will include a boolean value
-// indicating whether the token issuer is "monitoring" or not.
+// indicating whether the token issuer is "monitoring" or not. When
+// NewCustomClaim is set, the populated custom claim value is also attached to
+// the context via SetCustomClaim.
 func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	ctx := r.Context()
 	// NOTE: r.Form is not populated until calling ParseForm.
 	r.ParseForm()
-	token := r.Form.Get("access_token")
+	accessToken := r.Form.Get("access_token")
 	pathLabel := "unknown"
 	if !t.Enforced[r.URL.Path] {
 		// This path is not in the Enforced set, so accept the connection.
@@ -114,12 +131,12 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 
 	// The path is an enforced path, so copy it wholesale as a label.
 	pathLabel = r.URL.Path
-	if token == "" && !t.Required {
+	if accessToken == "" && !t.Required {
 		// The access token is missing and tokens are not requried, so accept the request.
 		tokenAccessRequests.WithLabelValues(pathLabel, "accepted", "empty").Inc()
 		return true, ctx
 	}
-	if token == "" {
+	if accessToken == "" {
 		// The access token was required but not provided.
 		tokenAccessRequests.WithLabelValues(pathLabel, "rejected", "missing").Inc()
 		return false, ctx
@@ -127,15 +144,26 @@ func (t *TokenController) isVerified(r *http.Request) (bool, context.Context) {
 	// Attempt to verify the token.
 	exp := t.Expected
 	exp.Time = time.Now()
-	cl, err := t.Public.Verify(token, exp)
-	if err != nil {
-		// The access token was invalid; reject this request.
-		reason := strings.TrimPrefix(err.Error(), "square/go-jose/jwt: validation failed, ")
+
+	var custom any
+	var extraDest []any
+	if t.NewCustomClaim != nil {
+		if c := t.NewCustomClaim(); c != nil {
+			custom = c
+			extraDest = []any{c}
+		}
+	}
+	cl, verifyErr := t.Public.Verify(accessToken, exp, extraDest...)
+	if verifyErr != nil {
+		reason := strings.TrimPrefix(verifyErr.Error(), "go-jose/go-jose/jwt: validation failed, ")
 		tokenAccessRequests.WithLabelValues(pathLabel, "rejected", reason).Inc()
 		return false, ctx
 	}
-	// If the claim Issuer was monitoring, set the context value so subsequent
-	// access controllers can check the context to allow monitoring reqeusts.
+
+	ctx = SetClaim(ctx, cl)
+	if custom != nil {
+		ctx = SetCustomClaim(ctx, custom)
+	}
 	tokenAccessRequests.WithLabelValues(pathLabel, "accepted", cl.Issuer).Inc()
-	return true, SetClaim(ctx, cl)
+	return true, ctx
 }

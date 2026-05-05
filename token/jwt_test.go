@@ -181,6 +181,175 @@ func TestLoadJSONWebKeyErrors(t *testing.T) {
 	}
 }
 
+func TestSignWithExtraClaims(t *testing.T) {
+	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +
+		`"d":"RXSpuTicBEL5GY-76cGgRXIEOB-q4hJ0vqydEnOztIY"}`
+
+	type customClaims struct {
+		Scope string `json:"scope,omitempty"`
+		Role  string `json:"role,omitempty"`
+	}
+
+	s, err := NewSigner([]byte(insecurePrivateTestKey))
+	if err != nil {
+		t.Fatalf("NewSigner failed: %v", err)
+	}
+
+	cl := jwt.Claims{
+		Issuer:   "locate",
+		Audience: jwt.Audience{"mlab1.fake0"},
+		Expiry:   jwt.NewNumericDate(time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC)),
+	}
+	extra := customClaims{Scope: "read", Role: "admin"}
+
+	// Sign with extra claims.
+	token, err := s.Sign(cl, extra)
+	if err != nil {
+		t.Fatalf("Sign with extra claims failed: %v", err)
+	}
+	if token == "" {
+		t.Fatal("Sign returned empty token")
+	}
+
+	// Sign without extra claims still works.
+	token2, err := s.Sign(cl)
+	if err != nil {
+		t.Fatalf("Sign without extra claims failed: %v", err)
+	}
+	if token2 == "" {
+		t.Fatal("Sign returned empty token")
+	}
+}
+
+// TestSignExtraClaimsCannotOverrideStandard asserts that a caller-supplied
+// extra claim struct whose JSON tags collide with standard jwt.Claims keys
+// (iss, aud, sub) cannot overwrite the values set via the standard claims
+// argument: the standard claims must win.
+func TestSignExtraClaimsCannotOverrideStandard(t *testing.T) {
+	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +
+		`"d":"RXSpuTicBEL5GY-76cGgRXIEOB-q4hJ0vqydEnOztIY"}`
+	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
+
+	type collider struct {
+		Iss string `json:"iss"`
+		Aud string `json:"aud"`
+		Sub string `json:"sub"`
+	}
+
+	s, err := NewSigner([]byte(insecurePrivateTestKey))
+	if err != nil {
+		t.Fatalf("NewSigner failed: %v", err)
+	}
+	v, err := NewVerifier([]byte(insecurePublicTestKey))
+	if err != nil {
+		t.Fatalf("NewVerifier failed: %v", err)
+	}
+
+	cl := jwt.Claims{
+		Issuer:   "standard-iss",
+		Audience: jwt.Audience{"standard-aud"},
+		Subject:  "standard-sub",
+		Expiry:   jwt.NewNumericDate(time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC)),
+	}
+	bad := collider{
+		Iss: "attacker-iss",
+		Aud: "attacker-aud",
+		Sub: "attacker-sub",
+	}
+
+	tok, err := s.Sign(cl, bad)
+	if err != nil {
+		t.Fatalf("Sign failed: %v", err)
+	}
+
+	exp := jwt.Expected{
+		Issuer:      "standard-iss",
+		AnyAudience: jwt.Audience{"standard-aud"},
+		Subject:     "standard-sub",
+		Time:        time.Date(2029, time.December, 31, 0, 0, 0, 0, time.UTC),
+	}
+	verified, err := v.Verify(tok, exp)
+	if err != nil {
+		t.Fatalf("Verify rejected token whose standard claims should have won: %v", err)
+	}
+	if verified.Issuer != "standard-iss" {
+		t.Errorf("Issuer: got %q, want %q", verified.Issuer, "standard-iss")
+	}
+	if len(verified.Audience) != 1 || verified.Audience[0] != "standard-aud" {
+		t.Errorf("Audience: got %v, want [standard-aud]", verified.Audience)
+	}
+	if verified.Subject != "standard-sub" {
+		t.Errorf("Subject: got %q, want %q", verified.Subject, "standard-sub")
+	}
+}
+
+func TestVerifyWithExtraClaims(t *testing.T) {
+	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +
+		`"d":"RXSpuTicBEL5GY-76cGgRXIEOB-q4hJ0vqydEnOztIY"}`
+	insecurePublicTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
+		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag"}`
+
+	type customClaims struct {
+		Scope string `json:"scope,omitempty"`
+		Role  string `json:"role,omitempty"`
+	}
+
+	s, err := NewSigner([]byte(insecurePrivateTestKey))
+	if err != nil {
+		t.Fatalf("NewSigner failed: %v", err)
+	}
+	v, err := NewVerifier([]byte(insecurePublicTestKey))
+	if err != nil {
+		t.Fatalf("NewVerifier failed: %v", err)
+	}
+
+	cl := jwt.Claims{
+		Issuer:   "locate",
+		Audience: jwt.Audience{"mlab1.fake0"},
+		Expiry:   jwt.NewNumericDate(time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC)),
+	}
+	extra := customClaims{Scope: "read", Role: "admin"}
+
+	tok, err := s.Sign(cl, extra)
+	if err != nil {
+		t.Fatalf("Sign failed: %v", err)
+	}
+
+	// Verify with extra destination.
+	exp := jwt.Expected{
+		Issuer:      "locate",
+		AnyAudience: jwt.Audience{"mlab1.fake0"},
+		Time:        time.Date(2029, time.December, 31, 0, 0, 0, 0, time.UTC),
+	}
+	var got customClaims
+	verified, err := v.Verify(tok, exp, &got)
+	if err != nil {
+		t.Fatalf("Verify failed: %v", err)
+	}
+	if verified.Issuer != "locate" {
+		t.Errorf("Expected issuer 'locate', got %q", verified.Issuer)
+	}
+	if got.Scope != "read" {
+		t.Errorf("Expected scope 'read', got %q", got.Scope)
+	}
+	if got.Role != "admin" {
+		t.Errorf("Expected role 'admin', got %q", got.Role)
+	}
+
+	// Verify without extra destination still works.
+	verified2, err := v.Verify(tok, exp)
+	if err != nil {
+		t.Fatalf("Verify without extra failed: %v", err)
+	}
+	if verified2.Issuer != "locate" {
+		t.Errorf("Expected issuer 'locate', got %q", verified2.Issuer)
+	}
+}
+
 func TestSignerJWKS(t *testing.T) {
 	insecurePrivateTestKey := `{"use":"sig","kty":"EC","kid":"112","crv":"P-256","alg":"ES256",` +
 		`"x":"V0NoRfUZ-fPACALnakvKtTyXJ5JtgAWlWm-0NaDWUOE","y":"RDbGu6RVhgJGKCTuya4_IzZhT1GzlEIA5ZkumEZ35Ag",` +

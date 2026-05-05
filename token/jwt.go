@@ -14,6 +14,13 @@ import (
 // corresponding key IDs matching the token header.
 var ErrKeyIDNotFound = errors.New("Key ID not found for given token header")
 
+// supportedAlgorithms lists the signature algorithms accepted during token parsing.
+var supportedAlgorithms = []jose.SignatureAlgorithm{
+	jose.EdDSA,
+	jose.ES256,
+	jose.RS256,
+}
+
 // ErrDuplicateKeyID is returned when initializing a verifier with multiple keys
 // with the same KeyID. KeyIDs should be unique.
 var ErrDuplicateKeyID = errors.New("Duplicate KeyID found")
@@ -25,8 +32,8 @@ type Verifier struct {
 
 // Signer is a JWT signer. Requires a private JWK.
 type Signer struct {
-	jwt.Builder
-	key *jose.JSONWebKey
+	signer jose.Signer
+	key    *jose.JSONWebKey
 }
 
 // NewSigner accepts a serialized, private JWK and creates a new Signer instance.
@@ -35,23 +42,27 @@ func NewSigner(key []byte) (*Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	opts := &jose.SignerOptions{}
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.SignatureAlgorithm(priv.Algorithm), Key: priv}, opts)
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.SignatureAlgorithm(priv.Algorithm), Key: priv}, &jose.SignerOptions{})
 	if err != nil {
 		return nil, err
 	}
-
-	p := &Signer{
-		Builder: jwt.Signed(signer),
-		key:     priv,
-	}
-	return p, nil
+	return &Signer{
+		signer: signer,
+		key:    priv,
+	}, nil
 }
 
-// Sign signs the given claims and returns the serialized token.
-func (k *Signer) Sign(cl jwt.Claims) (string, error) {
-	return k.Builder.Claims(cl).Serialize()
+// Sign signs the given claims and returns the serialized token. Optional extra
+// claim objects are merged into the JWT payload via go-jose's Builder.Claims().
+// If a field in extra serializes to a JSON key that is also set by cl, the
+// standard claim wins: extras are applied first and cl last, so go-jose's
+// later-wins merge semantics make cl authoritative.
+func (s *Signer) Sign(cl jwt.Claims, extra ...any) (string, error) {
+	b := jwt.Signed(s.signer)
+	for _, e := range extra {
+		b = b.Claims(e)
+	}
+	return b.Claims(cl).Serialize()
 }
 
 // JWKS returns a JSON Web Key Set containing the public key for this signer
@@ -83,46 +94,64 @@ func NewVerifier(keys ...[]byte) (*Verifier, error) {
 	}, nil
 }
 
-// Claims extracts the claims from a signed token, but does not
-// validate them against any expected claims. Useful for extracting
-// only the claims object.
-func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
-	tok, err := jwt.ParseSigned(token, []jose.SignatureAlgorithm{
-		jose.EdDSA,
-		jose.ES256,
-		jose.RS256,
-	})
+// parsedToken parses a signed token string and resolves the signing key.
+func (k *Verifier) parsedToken(token string) (*jwt.JSONWebToken, *jose.JSONWebKey, error) {
+	tok, err := jwt.ParseSigned(token, supportedAlgorithms)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
 	headers := tok.Headers
 	if len(headers) == 0 {
-		return nil, errors.New("no headers found in token")
+		return nil, nil, errors.New("no headers found in token")
 	}
-
 	// Note: We will not support tokens with multiple signatures/headers.
 	keyID := headers[0].KeyID
 	pub, found := k.keys[keyID]
 	if !found {
-		return nil, fmt.Errorf("%w: %s", ErrKeyIDNotFound, keyID)
+		return nil, nil, fmt.Errorf("%w: %s", ErrKeyIDNotFound, keyID)
 	}
+	return tok, pub, nil
+}
 
-	// Claims validates the jwt signature before extracting the token claims.
-	cl := &jwt.Claims{}
-	err = tok.Claims(pub, cl)
+// Claims extracts the standard JWT claims from a signed token. It fails on
+// signature mismatch (or missing/unknown key ID); otherwise it returns the
+// claims as-is. The claim values are not validated against any jwt.Expected,
+// that's the caller's responsibility.
+func (k *Verifier) Claims(token string) (*jwt.Claims, error) {
+	tok, pub, err := k.parsedToken(token)
 	if err != nil {
+		return nil, err
+	}
+	cl := &jwt.Claims{}
+	if err := tok.Claims(pub, cl); err != nil {
 		return nil, err
 	}
 	return cl, nil
 }
 
-// Verify checks the token signature and that the claims match the expected
-// config. Note: if validation of the expected claims fails, then Verify will
-// return the original token claims with the corresponding non-nil validation error.
-func (k *Verifier) Verify(token string, exp jwt.Expected) (*jwt.Claims, error) {
-	cl, err := k.Claims(token)
+// Verify authenticates the token signature and policy-checks the standard
+// jwt.Claims against exp (iss, aud, exp, nbf, sub). Extra destination
+// pointers are unmarshaled from the same JWT payload via go-jose's variadic
+// Claims support. For example:
+//
+//	var custom MyCustomClaims
+//	cl, err := v.Verify(token, expected, &custom)
+//
+// Fields in extraDest are JSON-unmarshaled only; no value-level check is
+// performed on them, that's the caller's responsibility.
+//
+// If parsing succeeds but expected-claims validation fails, Verify returns
+// the parsed claims along with the non-nil validation error.
+func (k *Verifier) Verify(token string, exp jwt.Expected, extraDest ...any) (*jwt.Claims, error) {
+	tok, pub, err := k.parsedToken(token)
 	if err != nil {
+		return nil, err
+	}
+	cl := &jwt.Claims{}
+	dest := make([]any, 0, 1+len(extraDest))
+	dest = append(dest, cl)
+	dest = append(dest, extraDest...)
+	if err := tok.Claims(pub, dest...); err != nil {
 		return nil, err
 	}
 	// Verify that the expected claims satisfy the signed claims. Default leeway

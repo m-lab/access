@@ -32,8 +32,8 @@ type Verifier struct {
 
 // Signer is a JWT signer. Requires a private JWK.
 type Signer struct {
-	builder jwt.Builder
-	key     *jose.JSONWebKey
+	signer jose.Signer
+	key    *jose.JSONWebKey
 }
 
 // NewSigner accepts a serialized, private JWK and creates a new Signer instance.
@@ -47,8 +47,8 @@ func NewSigner(key []byte) (*Signer, error) {
 		return nil, err
 	}
 	return &Signer{
-		builder: jwt.Signed(signer),
-		key:     priv,
+		signer: signer,
+		key:    priv,
 	}, nil
 }
 
@@ -58,7 +58,7 @@ func NewSigner(key []byte) (*Signer, error) {
 // standard claim wins: extras are applied first and cl last, so go-jose's
 // later-wins merge semantics make cl authoritative.
 func (s *Signer) Sign(cl jwt.Claims, extra ...any) (string, error) {
-	b := s.builder
+	b := jwt.Signed(s.signer)
 	for _, e := range extra {
 		b = b.Claims(e)
 	}
